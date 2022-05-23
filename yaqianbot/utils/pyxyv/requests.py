@@ -1,0 +1,26 @@
+import requests_cache
+from requests_cache.backends.sqlite import SQLiteCache
+from datetime import timedelta
+from .paths import cachepth
+
+cache_backend = SQLiteCache(cachepth, cache_control=True)
+sess = requests_cache.CachedSession(
+    'CachedSession',
+    backend=cache_backend,
+    expire_after=timedelta(minutes=20)
+)
+
+
+def get_image(*args, **kwargs):
+    from io import BytesIO
+    from PIL import Image
+    r = sess.get(*args, **kwargs)
+    content = r.content
+    bio = BytesIO()
+    bio.write(content)
+    bio.seek(0)
+    im = Image.open(bio)
+    return [r.headers.get('Content-Type'), im]
+get = sess.get
+post = sess.post
+head = sess.head
