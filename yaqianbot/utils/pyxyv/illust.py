@@ -128,4 +128,4 @@ class Ranking(BaseListing):
             item = ListingElement(
                 id=i['illust_id'], title=i['title'], preview=i['url'])
             self.items.append(item)
-            self.ids.append(i)
+            self.ids.append(i["illust_id"])
