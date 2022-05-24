@@ -13,37 +13,51 @@ from math import sqrt
 from ..paths import temppth
 import base64
 from io import BytesIO
-def img_b64(im, limit_size = (2<<20)):
-    
+
+
+def img_b64(im, limit_size=(2 << 20)):
+
     if("A" in im.mode):
         format = "PNG"
     else:
         format = "JPEG"
     w, h = im.size
-    bio, cur_size = None,None
+    original_w, original_h = im.size
+    bio, cur_size = None, None
+    original_size = None
+
     def _save():
-        nonlocal bio, im, format, cur_size
+        nonlocal bio, im, format, cur_size, original_size
         bio = BytesIO()
         im.save(bio, format)
         cur_size = bio.tell()
+        original_size = original_size or cur_size
         return cur_size
-    while(_save()>limit_size):
+    while(_save() > limit_size):
         r = 0.85*min(1, sqrt(limit_size/cur_size))
-        w, h=int(w*r),int(h*r)
-    
+        w, h = int(w*r), int(h*r)
+    if((w, h) != (original_w, original_h)):
+        print("Compress image %dx%d %d bytes to %dx%d %d bytes" %
+              (
+                  original_w, original_h, original_size,
+                  w, h, cur_size)
+              )
     bio.seek(0)
     bytes = bio.read()
     bio.close()
     return base64.b64encode(bytes).decode("ascii")
 
-def img_file_b64(filename, limit_size = (2<<20)):
+
+def img_file_b64(filename, limit_size=(2 << 20)):
     im = Image.open(filename)
     if(im.mode not in ["RGB", "RGBA"]):
-        with open(filename,"rb") as f:
+        with open(filename, "rb") as f:
             ret = base64.b64encode(f.read()).decode("ascii")
         return ret
     else:
         return img_b64(im, limit_size)
+
+
 def prepare_message(mes):
     if(not isinstance(mes, list)):
         mes = [mes]
@@ -56,7 +70,7 @@ def prepare_message(mes):
                     file = "base64://"+img_file_b64(i)
                     mes = MSEG.image(file)
                     ret.append(mes)
-                elif(ext in [".wav",".mp3",".ogg"]):
+                elif(ext in [".wav", ".mp3", ".ogg"]):
                     mes = MSEG.record(i)
                     ret.append(mes)
                 else:
@@ -71,6 +85,7 @@ def prepare_message(mes):
         else:
             ret.append(MSEG.text(str(i)))
     return ret
+
 
 def mes_str2arr(message):
     pattern = r"(\[CQ:(.+?),(.+?)\])"
