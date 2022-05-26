@@ -32,7 +32,8 @@ class Message:
     raw: Any = None
 
     def update_rpics(self):
-        rpics[self.sender] = rpics.get(self.sender, self.pics)
+        
+        rpics[self.sender] = self.pics or rpics.get(self.sender)
         self.recent_pics = rpics[self.sender]
         return self.recent_pics
 
