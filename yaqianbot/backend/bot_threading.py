@@ -27,6 +27,7 @@ def threading_run(f):
         raise TypeError(type(f))
 
     def deco(func):
+        @wraps(func)
         def _inner(*args, **kwargs):
             try:
                 startime = nowtime()

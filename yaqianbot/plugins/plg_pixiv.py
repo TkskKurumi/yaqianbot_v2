@@ -6,7 +6,6 @@ import re
 import random
 from datetime import timedelta
 
-
 @receiver
 @threading_run
 @startswith("/pix")

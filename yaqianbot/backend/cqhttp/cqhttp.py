@@ -17,9 +17,10 @@ def receiver(func):
 
 async def message_receiver(event: Event):
     print("received", event.raw_message)
+    mes = CQMessage.from_cq(event)
     for name, func in receivers.items():
         # print(name, func, inspect.isawaitable(func))
-        ret = func(CQMessage.from_cq(event))
+        ret = func(mes)
         if(inspect.isawaitable(ret)):
             await ret
 
