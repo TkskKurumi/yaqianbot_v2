@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from typing import Any
-
+from .requests import get_image
 
 @dataclass
 class User:
@@ -16,6 +16,9 @@ class User:
 
     def __eq__(self, other):
         return (self.from_group == other.from_group) and (self.id == other.id)
+    def get_avatar(self):
+        url = "https://q.qlogo.cn/headimg_dl?dst_uin=%s&img_type=jpg&spec=640"%self.id
+        return get_image(url)
 
 
 rpics = dict()
