@@ -8,4 +8,3 @@ from .paths import temppth, cachepth, mainpth
 if(bot_config.get("BACKEND", "cqhttp") == "cqhttp"):
     from .cqhttp.cqhttp import *
     from .cqhttp import cqhttp as backend
-

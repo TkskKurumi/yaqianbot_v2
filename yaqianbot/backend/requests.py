@@ -21,6 +21,13 @@ def get_image(*args, **kwargs):
     bio.seek(0)
     im = Image.open(bio)
     return [r.headers.get('Content-Type'), im]
+
+
+def get_avatar(uid):
+    url = "https://q.qlogo.cn/headimg_dl?dst_uin=%s&img_type=jpg&spec=640"%uid
+    im = get_image(url)[1]
+    return im
+
 get = sess.get
 post = sess.post
 head = sess.head
