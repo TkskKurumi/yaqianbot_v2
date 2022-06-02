@@ -2,6 +2,8 @@ from dataclasses import dataclass
 from typing import Any
 from .requests import get_image
 
+
+
 @dataclass
 class User:
     id: str

@@ -46,9 +46,10 @@ class jsondb:
         if(path.exists(pth)):
             j = loadjson(pth)
             self.d[self.method(key)] = j
-            self.loaded.add(pth)
-            return j
-        return {}
+        else:
+            j = {}
+        self.loaded.add(pth)
+        return j
     def _save(self, key):
         self._load(key)
         savejson(self._get_pth(key), self.d[self.method(key)])

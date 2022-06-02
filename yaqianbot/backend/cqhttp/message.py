@@ -1,4 +1,4 @@
-
+import html
 from typing import Dict
 from aiocqhttp import Event
 import re
@@ -144,8 +144,9 @@ class CQMessage(Message):
                 pics.append(i)
             elif(type == "at"):
                 ated.append(data.get("qq"))
+        plain_text = html.unescape(event.raw_message)
         ret = cls(sender=sender, pics=pics, ated=ated,
-                  plain_text=event.raw_message, group=group, raw=event)
+                  plain_text=plain_text, group=group, raw=event)
         ret.update_rpics()
         return ret
 
