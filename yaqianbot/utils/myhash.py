@@ -1,7 +1,8 @@
+import numpy as np
 def myhash(x, length = 50):
     mask = (1<<length)-1
     offset = 7
-    if(isinstance(x, list) or isinstance(x, tuple)):
+    if(isinstance(x, list) or isinstance(x, tuple) or isinstance(x, np.ndarray)):
         ret = 0
         for i in x:
             ret = ret<<offset
@@ -16,6 +17,8 @@ def myhash(x, length = 50):
         while(ret>>length):
             ret = (ret>>length)^(ret&mask)
         return ret
+    elif(np.issubdtype(type(x), np.integer)):
+        return myhash(int(x))
     elif(isinstance(x, dict)):
         ls = ["dict:"]
         for key in sorted(x):

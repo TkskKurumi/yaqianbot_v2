@@ -1,7 +1,8 @@
 from PIL import Image, ImageDraw
+from math import pi
 import numpy as np
 from typing import List
-from .colors import color
+from .colors import color, WHITE
 import math
 
 
@@ -49,21 +50,37 @@ def colorvec(arr: np.ndarray, colors: List):
     return Image.fromarray(ret.astype(np.uint8))
 
 
-def grids(w, h, color_h = None, color_v = None, angle = 45):
+def grids(w, h, color_h=None, color_v=None, angle=45, gap=None):
     if(color_h is None):
-        color(0,0,0).get_rgb()
+        color_h = [WHITE, color(128, 128, 128)]
+    if(color_v is None):
+        color_v = color_h
+    if(gap is None):
+        gap = ((w*w+h*h)**0.5)/20
 
     def f(x, y, angle):
-        return x*math.cos(angle)+y*math.sin(angle)
+        nonlocal gap
+        return (x*math.cos(angle/180*pi)+y*math.sin(angle/180*pi))/gap
+    ret = Image.new("RGBA", (w, h))
+    for x in range(w):
+        for y in range(h):
+            horizontal = f(x, y, angle)
+            v = f(x, y, angle+90)
+            h_idx = int(horizontal%len(color_h))
+            v_idx = int(v%len(color_v))
+            c = (color_h[h_idx]+color_v[v_idx])/2
+            ret.putpixel((x, y), color.aspil(c))
+    return ret
 
-def unicorn(w, h, colora = None, colorb = None, colorc= None,colord=None):
+
+def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
     colora = colora or color.from_any("lightpink").get_rgb()
-    colorb = colorb or  [253, 246, 237]
+    colorb = colorb or [253, 246, 237]
     colorc = colorc or color.from_any("paleturquoise").get_rgb()
     colord = colord or color.from_any("lightcyan").get_rgb()
 
     a, b, c, d, e, _f, g, _h = np.random.normal(0, 1, (8, ))
-    o ,p, q, r = np.abs(np.random.normal(0, 1, (4, )))+1
+    o, p, q, r = np.abs(np.random.normal(0, 1, (4, )))+1
     arr = np.zeros((h, w, 4), np.float16)
     sz = math.sqrt(w*w+h*h)/13
 
@@ -80,8 +97,8 @@ def unicorn(w, h, colora = None, colorb = None, colorc= None,colord=None):
 
 
 if(__name__ == "__main__"):
-    
-    im = unicorn(300, 200, colora = color.from_any("salmon").get_rgb(), colorb=color.from_any("darkorchid").get_rgb())
-    im.save("./tmp.jpg")
-    
-    
+    # for testing
+    import os
+    im = grids(512, 288)
+    im.save("./tmp.png")
+    os.system("code ./tmp.png")
