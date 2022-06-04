@@ -5,7 +5,7 @@ from collections import defaultdict
 
 def kmeans(points, k, iter=5, weights = None):
     n = len(points)
-    points = np.array(points, np.float16)
+    points = np.array(points, np.float32)
     if(weights is None):
         weights = [1 for i in range(n)]
     rets = random.sample(list(range(n)), k)

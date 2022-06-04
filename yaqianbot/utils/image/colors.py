@@ -1,7 +1,11 @@
+
+from ..algorithms import kmeans
 from dataclasses import dataclass
 from PIL import ImageColor, Image
 import random
 import numpy as np
+
+
 def _list_update_None(ls, *args):
     ret = list(ls)
     for newls in args:
@@ -9,19 +13,40 @@ def _list_update_None(ls, *args):
             if(i is not None):
                 ret[idx] = i
     return ret
-from ..algorithms import kmeans
 
-def image_colors(img:Image.Image, k:int):
-    w, h=img.size
+
+def _dist(a, b):
+    return (np.sum((a-b)**2))**0.5
+
+
+def image_border_color(img):
+    colors = []
+    w, h = img.size
+    arr = img.__array__()
+    for x in [0, w-1]:
+        for y in range(h):
+            colors.append(arr[y, x])
+    for x in range(w):
+        for y in [0, h-1]:
+            colors.append(arr[y, x])
+    return color(*np.mean(colors, axis=0))
+
+
+def image_colors(img: Image.Image, k: int, weight_by_s = False):
+    w, h = img.size
     colors = []
     weights = []
     for i in range(100):
-        x, y=random.randrange(w),random.randrange(h)
+        x, y = random.randrange(w), random.randrange(h)
         c = img.getpixel((x, y))
-        hue, s, l = color(*c).get_hsl()
         colors.append(c)
-        weights.append(s)
-    return kmeans(colors, k, weights=weights)
+        if(weight_by_s):
+            hue, s, l = color(*c).get_hsl()
+            weights.append(s)
+        else:
+            weights = None
+    return [color(*i) for i in kmeans(colors, k, weights=weights)]
+
 
 @dataclass
 class color:
@@ -31,19 +56,55 @@ class color:
     A: int = 255
 
     def __iter__(self):
-        return tuple(self.get_rgba()).__iter__()
-    
+        return (self.R, self.G, self.B, self.A).__iter__()
+
+    def __mul__(self, n):
+        return color(*[i*n for i in self])
+
+    def __truediv__(self, n):
+        return color(*[i/n for i in self])
+
+    def __add__(self, other):
+        if(isinstance(other, color)):
+            ls1 = list(other)
+            ls2 = list(self)
+            return color(*[ls1[i] + ls2[i] for i in range(4)])
+        else:
+            return NotImplemented
+
+    def interpolate_hsl(self, other, n):
+        h1, s1, l1 = self.get_hsl()
+        h2, s2, l2 = other.get_hsl()
+        s = s1*(1-n)+s2*n
+        l = l1*(1-n)+l2*n
+        h1, h2, nh = min(h1, h2), max(h1, h2), n if h1 < h2 else 1-n
+        deltah = h2-h1
+        if(deltah < 180):
+            h = h1+deltah*n
+        else:
+            h = (h1+(deltah-360)*n) % 360
+        return color.from_hsl(h, s, l)
+
+    def interpolate_rgb(self, other, n):
+        return self*(1-n)+other*n
+
+    def interpolate(self, other, n, mode="RGB"):
+        if(mode == 'RGB'):
+            return self.interpolate_rgb(other, n)
+        else:
+            return self.intrepolate_hsl(other, n)
+
     def get_rgb(self):
         """
             Returns tuple of R, G, B.
         """
-        return self.R, self.G, self.B
+        return int(self.R), int(self.G), int(self.B)
 
     def get_rgba(self):
         """
             Returns tuple of R, G, B, A.
         """
-        return self.R, self.G, self.B, self.A
+        return int(self.R), int(self.G), int(self.B), int(self.A)
 
     def get_hsl(self):
         """
@@ -55,7 +116,7 @@ class color:
 
         L = (mx+mn)/2
         if(mx == mn):
-            S=0
+            S = 0
         else:
             if(L < 128):
                 S = (mx-mn)/(mx+mn)
@@ -91,13 +152,14 @@ class color:
         else:
             H = 240+60*(R-G)/denomina
         return H % 360, S, V/255
+
     def replace(self, R=None, G=None, B=None, H=None, S=None, L=None, A=None):
         isrgb = (R is not None) or (G is not None) or (B is not None)
         ishsl = (H is not None) or (S is not None) or (L is not None)
         if(isrgb and ishsl):
             raise ValueError("RGB or HSL conflicts")
         if(ishsl):
-            H, S, L=_list_update_None(self.get_hsl(), (H, S, L))
+            H, S, L = _list_update_None(self.get_hsl(), (H, S, L))
             R, G, B = color.from_hsl(H, S, L).get_rgb()
         else:
             R, G, B = _list_update_None(self.get_rgb(), (R, G, B))
@@ -114,26 +176,33 @@ class color:
     def from_hsl(cls, H, S, L, A=255):
         r, g, b = ImageColor.getrgb("hsl(%d,%d%%,%d%%)" % (H, S*100, L*100))
         return cls(r, g, b, A)
+
     @classmethod
     def from_any(cls, x):
         return cls(*ImageColor.getrgb(x))
+
     def lighten(self, rate=0.5):
         H, S, L = self.get_hsl()
         L = 1-rate + L*rate
         return color.from_hsl(H, S, L, self.A)
+
     def darken(self, rate=0.5):
         H, S, L = self.get_hsl()
         L = L*rate
         return color.from_hsl(H, S, L, self.A)
+
     def weaken(self, rate=0.5):
-        return self.replace(A = self.A*rate)
+        return self.replace(A=self.A*rate)
+
     def strengthen(self, rate=0.5):
-        return self.replace(A = self.A*rate+255*(1-rate))
+        return self.replace(A=self.A*rate+255*(1-rate))
+
     def aspil(self, mode='RGB'):
         if(mode == "RGBA"):
             return tuple([int(i) for i in self.get_rgba()])
         else:
             return tuple([int(i) for i in self.get_rgb()])
+
     def borderof(img):
         w, h = img.size
         colors = []
@@ -144,19 +213,40 @@ class color:
             for y in [0, h-1]:
                 colors.append(img.getpixel((x, y)))
         return color(*np.mean(colors, axis=0))
+
     def hex(self):
-        return "#%s%s%s%s"%tuple([hex(i)[2:] for i in self])
+        return "#%s%s%s%s" % tuple([hex(i)[2:] for i in self])
+
+    def aspil(self):
+        if(isinstance(self, color)):
+            return self.get_rgba()
+        else:
+            return tuple(self)
+
+    def as_terminal_fg(self):
+        return "\u001b[38;2;%d;%d;%dm" % self.get_rgb()
+
+    def as_terminal_bg(self):
+        return "\u001b[48;2;%d;%d;%dm" % self.get_rgb()
+    def as_terminal_rst(self):
+        return "\u001b[0m"
+    def colored_terminal_str(self):
+        if(sum(self.get_rgb()) < 3*255/2):
+            fg = color(255, 255, 255)
+        else:
+            fg = color(0, 0, 0)
+        return "%s%s%s%s"%(self.as_terminal_bg(), fg.as_terminal_fg(), self, self.as_terminal_rst())
+
+BLACK = color(0, 0, 0)
+WHITE = color(255, 255, 255)
+
 if(__name__ == "__main__"):
-    RED = color(255, 0, 0)
-    print(RED.get_hsl())
-    print(RED.get_hsv())
-
-    print(color.from_hsl(0, 1, 0.5))
-    print(color.from_hsv(0, 1, 1))
-    print(ImageColor.getrgb("hsl(0,100%,50%)"))
-
-    print(RED.lighten().get_rgb())
-    print(RED.replace(H = 120))
-    print(RED.replace(R = 233, G=120))
-    print(color(114,233,111).replace(S=0.4, L=0.5).hex())
-    print(color(233,111,223).replace(S=0.4, L=0.5).hex())
+    # test
+    from .print import print_colors
+    from ..pyxyv import illust
+    ill = illust.Illust(88125445)
+    im = ill.get_pages(0, 1)[0]
+    im = Image.open(im)
+    print(image_colors(im, 5))
+    print_colors(image_colors(im, 10))
+    print_colors(image_border_color(im))
