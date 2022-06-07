@@ -141,6 +141,7 @@ class kdt:
         self.right_child = []
         self.axis = []
         self.value = []
+        self.depths = []
         self.root = None
 
     def _new_index(self):
@@ -149,6 +150,7 @@ class kdt:
         self.right_child.append(None)
         self.axis.append(None)
         self.value.append(None)
+        self.depths.append(None)
         if(self.root is None):
             self.root = len(self.node_points)-1
         self.size = len(self.node_points)
@@ -183,6 +185,7 @@ class kdt:
             for id, i in enumerate(points):
                 i.id = id
         u = self._new_index()
+        self.depths[u] = depth
         if(len(points) <= stop_num or stop_depth <= depth):
             self.node_points[u] = points
             self._sum_leaf += 1
@@ -216,17 +219,63 @@ class kdt:
         self.right_child[u] = self.build(
             rpoints, stop_num=stop_num, depth=depth+1, stop_depth=stop_depth)
         return u
-
-    def ann1(self, p, u=None, cut_dist=_inf, with_dist=False, recall=False):
-
+    def ann(self, p, u=None, cut_dist = _inf, recall_alpha=0.8):
         if(u is None):
             self._cnt_call_ann_top += 1
-            ret, retd = self.ann1(p, u=self.root, with_dist=True,recall=recall)
+            return self.ann(p, self.root, cut_dist, recall_alpha)
+        self._cnt_call_ann_recursive
+        do_recall = random.random()<(recall_alpha**self.depths[u])
+        if(self.node_points[u] is not None):
+            # is leaf
+            ret = None
+            ret_dist = None
+            for i in self.node_points[u]:
+                dist = i.dist(p)
+                self._cnt_calc_dist+=1
+                if((ret is None) or (dist < ret_dist)):
+                    ret = i
+                    ret_dist = dist
+            return ret, ret_dist
+        else:
+            # is not leaf
+            axis = self.axis[u]
+            valu = self.value[u]
+            lc = self.left_child[u]
+            rc = self.right_child[u]
+            if(p.arr[axis]<=valu):
+                ret, retd = self.ann(p, lc, cut_dist, recall_alpha)
+                cut_dist = min(cut_dist, retd)
+                if(do_recall):
+                    if(abs(ret.arr[axis] - valu) < cut_dist):
+                        self._cnt_recall+=1
+                        ret1, retd1 = self.ann(p, rc, cut_dist, recall_alpha)
+                        if(retd1 < retd):
+                            ret=ret1
+                            retd=retd1
+                return ret, retd
+            else:
+                ret, retd = self.ann(p, rc, cut_dist, recall_alpha)
+                cut_dist = min(cut_dist, retd)
+                if(do_recall):
+                    if(abs(ret.arr[axis] - valu) < cut_dist):
+                        self._cnt_recall+=1
+                        ret1, retd1 = self.ann(p, lc, cut_dist, recall_alpha)
+                        if(retd1 < retd):
+                            ret=ret1
+                            retd=retd1
+                return ret, retd
+    def ann1(self, p, u=None, cut_dist=_inf, with_dist=False, recall=False, recall_alpha = None):
+        
+        if(u is None):
+            self._cnt_call_ann_top += 1
+            ret, retd = self.ann1(p, u=self.root, with_dist=True, recall=recall, recall_alpha=recall_alpha)
             assert ret is not None
             if(with_dist):
                 return ret, retd
             else:
                 return ret
+        if(recall_alpha):
+            recall = random.random()<(recall_alpha**self.depths[u])
         self._cnt_call_ann_recursive += 1
         # leaf node
         if(self.node_points[u] is not None):
@@ -249,12 +298,12 @@ class kdt:
         axis = self.axis[u]
         value = self.value[u]
         if(p.arr[axis] <= value):
-            ret, retd = self.ann1(p, self.left_child[u], cut_dist=cut_dist,recall=recall)
+            ret, retd = self.ann1(p, self.left_child[u], cut_dist=cut_dist,recall=recall, recall_alpha=recall_alpha)
             mn = min(retd, cut_dist)
             if(recall and mn > abs(p.arr[axis]-value)):
                 self._cnt_recall += 1
                 ret1, ret1d = self.ann1(
-                    p, self.right_child[u], cut_dist=mn,recall=recall)
+                    p, self.right_child[u], cut_dist=mn,recall=recall, recall_alpha=recall_alpha)
 
                 if(ret1d < retd):
                     # assert (ret1 is not None)
@@ -265,14 +314,14 @@ class kdt:
             else:
                 return ret, retd
         else:
-            ret, retd = self.ann1(p, self.right_child[u], cut_dist=cut_dist,recall=recall)
+            ret, retd = self.ann1(p, self.right_child[u], cut_dist=cut_dist,recall=recall, recall_alpha=recall_alpha)
             # assert (ret is not None), "%s,%s" % (
             #     self.right_child[u], self.node_points[self.right_child[u]])
             mn = min(retd, cut_dist)
             if(recall and mn > abs(p.arr[axis]-value)):
                 self._cnt_recall += 1
                 ret1, ret1d = self.ann1(
-                    p, self.left_child[u], cut_dist=mn,recall=recall)
+                    p, self.left_child[u], cut_dist=mn,recall=recall, recall_alpha=recall_alpha)
 
                 # ret1d=ret1.dist(p)
                 if(ret1d < retd):
@@ -312,18 +361,19 @@ if(__name__ == '__main__'):
             sumd += retd
         return sumd
     K = kdt()
-    K.build(points, stop_num=num**0.5)
+    K.build(points, stop_num=5)
 
     def find_nearest_kdt():
         sumd=0
         for p in pointss:
             
-            ret, retd = K.ann1(p, with_dist=1, recall=True)
+            ret, retd = K.ann(p, recall_alpha=0.7)
             sumd += retd
         return sumd 
     from timeit import timeit
     print(timeit(stmt=find_nearest_basic, number=10))
     print(timeit(stmt=find_nearest_kdt, number=10))
     K.print_performance()
+    print("root depth", K.depths[K.root])
     print(find_nearest_basic())
     print(find_nearest_kdt())
