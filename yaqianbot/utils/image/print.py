@@ -2,8 +2,8 @@ import shutil
 from .colors import color
 from .sizefit import fit_shrink, resize_ratio
 from PIL import Image
-
-
+import tempfile
+from os import path
 def print_colors(colors, end="\n"):
     if(isinstance(colors, color)):
         print(colors.colored_terminal_str(), end=end)
@@ -32,9 +32,11 @@ def colored(text, fg: color = None, bg=None):
 
 
 def image_show_terminal(im):
+    pth = path.join(tempfile.gettempdir(), "tmp.png")
+    im.save(pth)
     ts = shutil.get_terminal_size()
-    w, h = ts.columns-2, ts.lines-2
-    im = resize_ratio(im, rw=0.8, rh=0.4)
+    w, h = ts.columns-2, ts.lines-4
+    im = resize_ratio(im, rw=1, rh=0.4)
     im = fit_shrink(im, w, h).convert("RGB")
 
     w, h = im.size
@@ -42,8 +44,9 @@ def image_show_terminal(im):
         for x in range(w):
             print(colored(" ", bg=color(*im.getpixel((x, y)))), end="")
         print()
-
-
+    
+    
+    print(pth)
 if(__name__ == "__main__"):
     from .print import print_colors
     from ..pyxyv import illust

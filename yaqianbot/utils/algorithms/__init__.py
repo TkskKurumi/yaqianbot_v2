@@ -3,7 +3,7 @@ import random
 from collections import defaultdict
 
 
-def kmeans(points, k, iter=5, weights = None):
+def kmeans(points, k, iter=8, weights = None):
     n = len(points)
     points = np.array(points, np.float32)
     if(weights is None):
@@ -25,6 +25,8 @@ def kmeans(points, k, iter=5, weights = None):
         for i in range(k):
             if(pointn[i]):
                 rets[i]=pointsum[i]/pointn[i]
+            else:
+                rets[i]=random.choice(points)
     return rets
 
 

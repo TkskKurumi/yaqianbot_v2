@@ -6,7 +6,8 @@ import math
 class point2d:
     x: float
     y: float
-
+    def __iter__(self):
+        return (self.x, self.y).__iter__()
     def __add__(self, other):
         return point2d(self.x+other.x, self.y+other.y)
 

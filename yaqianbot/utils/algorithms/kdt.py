@@ -124,7 +124,10 @@ class point:
         AB = B-A
         dot = AB*PC
         return abs(dot/AB.distO())
-
+    def __iter__(self):
+        return self.arr.__iter__()
+    def __getitem__(self, key):
+        return self.arr.__getitem__(key)
 
 def variance(ls):
     avg = sum(ls)/len(ls)
@@ -174,7 +177,7 @@ class kdt:
         if(depth == 0):
 
             self.initiate_statics()
-            # points = list(set(points))
+            points = list(set(points))
             if(stop_num is None):
                 # stop_num=len(points)**0.25
                 stop_num = 1
@@ -340,7 +343,7 @@ if(__name__ == '__main__'):
     def rand_nd(n):
         return tuple([random.random()*255 for i in range(n)])
         # return tuple([random.choice([1,2,3]) for i in range(n)])
-    nd = 3
+    nd = 2
     num = 300
     points = [point(rand_nd(nd)) for i in range(num)]
     pointss = [point(rand_nd(nd)) for i in range(num)]

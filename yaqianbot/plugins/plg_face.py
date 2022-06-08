@@ -5,13 +5,16 @@ import re
 import random
 from datetime import timedelta
 import numpy as np
-from PIL import Image
-from ..utils import image
+from PIL import Image, ImageDraw
+from ..utils import image, algorithms
 from ..utils.image.sizefit import fit_shrink, fix_width
+from ..utils.image import sizefit, colors
 from ..utils.image import gif_frames_duration
 from pil_functional_layout.widgets import Column, RichText, Text
 from ..utils.make_gif import make_gif
 from ..utils import after_match
+from ..utils.algorithms.kdt import kdt as KDT
+from ..utils.algorithms.kdt import point as KDTPoint
 '''
 @receiver
 @threading_run
@@ -55,7 +58,82 @@ def img_filter(imgtype, img, filter):
         return gif
     else:
         return filter(img)
+@receiver
+@threading_run
+@startswith("/test")
+def cmd_face_test(message: CQMessage):
+    points = []
+    
+    imgtype, img = message.get_sent_images()[0]
+    w, h = img.size
+    mx = 5e4
+    if(w*h>mx):
+        img = sizefit.area(img, mx)
+        w, h=img.size
+    for i in range(100):
+        x, y=random.randrange(w), random.randrange(h)
+        points.append((x, y))
+    kdt = KDT()
+    kdt.build(points)
+    def f(img):
+        nonlocal w, h, kdt
+        ret = Image.new(img.mode, img.size)
+        for x in range(w):
+            for y in range(h):
+                p = KDTPoint((x, y))
+                p1, dist = kdt.ann(p,recall_alpha=0.8)
+                ox, oy=p1
+                ret.putpixel((x, y), img.getpixel((ox, oy)))
+        return ret
+    message.response_sync(f(img.convert("RGB")))
 
+@receiver
+@threading_run
+@startswith("(/8bit)|(/像素风)")
+def cmd_face_8bit(message: CQMessage):
+    text = after_match("(/8bit)|(/像素风)", message.plain_text).strip()
+    if(text.isdigit()):
+        n = min(max(int(text), 8), 256)
+    else:
+        n = 32
+    
+    imgtype, img = message.get_sent_images()[0]
+    if(imgtype=="image/gif"):
+        frms, fps = image.gif_frames_fps(img)
+        w, h=frms[0].size
+        cols = []
+        for i in range(200):
+            x, y=random.randrange(w), random.randrange(h)
+            c = random.choice(frms).getpixel((x, y))
+            cols.append(c)
+        color16 = np.array(algorithms.kmeans(cols, n))
+    else:
+        color16 = None
+
+    
+    def f(img):
+        nonlocal n, color16
+        w, h = img.size
+        if(w*h>1e6):
+            img = sizefit.area(img, 1e6)
+            w, h=img.size
+        w1, h1 = sizefit._rate(w, h, rate=n/w)
+        if(color16 is None):
+            color16 = colors.image_colors(img, n, return_type="array")
+        img = img.resize((w1, h1), Image.Resampling.LANCZOS)
+        
+        for x in range(w1):
+            for y in range(h1):
+                c = img.getpixel((x, y))
+                tmp = color16-c
+                tmp = np.sum(tmp**2, axis=-1)
+                idx = np.argmin(tmp)
+                img.putpixel((x, y), tuple([int(i) for i in color16[idx]]))
+        img = img.resize((w, h), Image.Resampling.NEAREST)
+
+        return img
+    ret = img_filter(imgtype, img, f)
+    message.response_sync(ret)
 @receiver
 @threading_run
 @startswith("(/字幕)|(/加字)")

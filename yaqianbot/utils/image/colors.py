@@ -32,11 +32,11 @@ def image_border_color(img):
     return color(*np.mean(colors, axis=0))
 
 
-def image_colors(img: Image.Image, k: int, weight_by_s = False):
+def image_colors(img: Image.Image, k: int, weight_by_s = False, return_type = "color"):
     w, h = img.size
     colors = []
     weights = []
-    for i in range(100):
+    for i in range(200):
         x, y = random.randrange(w), random.randrange(h)
         c = img.getpixel((x, y))
         colors.append(c)
@@ -45,7 +45,11 @@ def image_colors(img: Image.Image, k: int, weight_by_s = False):
             weights.append(s)
         else:
             weights = None
-    return [color(*i) for i in kmeans(colors, k, weights=weights)]
+    ret = kmeans(colors, k, weights=weights)
+    if(return_type == "color"):
+        return [color(*i) for i in ret]
+    else:
+        return np.array(ret)
 
 
 @dataclass
@@ -239,7 +243,7 @@ class color:
 
 BLACK = color(0, 0, 0)
 WHITE = color(255, 255, 255)
-
+Color = color
 if(__name__ == "__main__"):
     # test
     from .print import print_colors
