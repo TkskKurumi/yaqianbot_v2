@@ -153,6 +153,8 @@ class CQMessage(Message):
     def get_sent_images(self):
         rpics = self.recent_pics
         ret = []
+        if(not rpics):
+            raise Exception("未发送图片！")
         for i in rpics:
             data = i['data']
             url = data['url']

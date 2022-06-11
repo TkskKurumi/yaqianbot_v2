@@ -1,3 +1,4 @@
+from ..backend.receiver_decos import on_exception_response
 from ..backend import receiver, startswith
 from ..backend import threading_run
 from ..backend.cqhttp import CQMessage
@@ -67,6 +68,7 @@ def img_filter(imgtype, img, filter):
 
 @receiver
 @threading_run
+@on_exception_response
 @startswith("/test")
 def cmd_face_test(message: CQMessage):
     points = []
