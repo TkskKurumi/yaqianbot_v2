@@ -36,7 +36,29 @@ def cmd_pixiv(message: CQMessage):
     ill = Illust(id)
     imgs = ill.get_pages(quality="regular")
     message.response_sync(imgs+["%s by %s" % (ill.title, ill.author)])
-
+@receiver
+@threading_run
+@startswith("/每.色图")
+def cmd_pixiv_daily(message):
+    def f(id):
+        ret=dict()
+        data=dict()
+        ret["type"]="node"
+        data["uin"]=message.raw["self_id"]
+        data["name"]="每日色图"
+        imgs=Illust(id).get_pages(quality="regular")
+        mes=prepare_message(imgs)
+        data["content"]=mes
+        ret["data"]=data
+        return ret
+    mode="daily"
+    if("月" in message.plain_text):
+        mode="monthly"
+    elif("周" in message.plain_text):
+        mode="weekly"
+    ranking=Ranking(mode=mode)
+    meow=[f(i) for i in ranking.ids[:10]]
+    _bot.sync.send_group_forward_msg(self_id=message.raw["self_id"],messages=meow,group_id=message.raw["group_id"])
 
 @receiver
 @threading_run

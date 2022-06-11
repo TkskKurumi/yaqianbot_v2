@@ -9,6 +9,9 @@ import os
 
 
 def make_gif(frames: List[Image.Image], fps=24, area=None, frame_area_sum=None):
+    print("making gif")
+    if(len(frames)==1):
+        frames = frames+frames
     w, h = frames[0].size
     if((frame_area_sum is not None) and (area is None)):
         area = frame_area_sum/len(frames)

@@ -44,6 +44,8 @@ def threading_run(f):
                 with locked(cnt_lock):
                     running_cnt[taskname] -= 1
                 task_timer.count(taskname, nowtime()-startime)
+                if(nowtime()-startime>5):
+                    print(taskname,"completed after %.2f seconds"%(nowtime()-startime))
                 return ret
             except Exception as e:
                 traceback.print_exc()

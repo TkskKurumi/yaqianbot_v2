@@ -20,4 +20,6 @@ def gif_frames_duration(gifimg):
     return ret, duration
 def gif_frames_fps(gifimg):
     frames, dur = gif_frames_duration(gifimg)
+    if(dur == 0):
+        dur = 1000
     return frames, len(frames)/(dur/1000)
