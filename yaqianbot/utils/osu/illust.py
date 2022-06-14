@@ -1,6 +1,6 @@
 from typing import Dict, List
 from PIL import Image, ImageDraw
-from pil_functional_layout.widgets import Text, Row, Column, RichText, CompositeBG
+from pil_functional_layout.widgets import Text, Row, Column, RichText, CompositeBG, addBorder
 from ..image.background import triangles
 from ..image.colors import Color
 from ..image.print import print_colors
@@ -38,6 +38,14 @@ def rank_badge(rank="S", font_size=28):
         bgc = (0, 170, 180)
         fgc = (255, 222, 22)
         sdc = Color.from_hsl(240, 1, 0.7)
+    elif(rank == "SH"):
+        bgc = (0, 170, 180)
+        fgc = Color.from_hsl(180, 0.9, 0.95)
+        sdc = (0, 100, 100)
+    elif(rank == "SS"):
+        bgc = (190, 10, 140)
+        fgc = Color.from_hsl(180, 0.9, 0.95)
+        sdc = (0, 100, 100)
     elif(rank == "A"):
         bgc = (130, 212, 26)
         fgc = (0, 80, 30)
@@ -53,7 +61,7 @@ def rank_badge(rank="S", font_size=28):
     bgc = Color(*bgc)
     fgc = Color(*fgc)
     sdc = Color(*sdc)
-    print(sdc)
+    # print(sdc)
     t = Text(rank, fill=fgc.get_rgba(), fontSize=font_size).render()
     t = process.shadow(t, radius=font_size/20, color=sdc)
     h = t.size[1]
@@ -114,7 +122,7 @@ def illust_score(score: Dict, size=1080, style="dark"):
                             fill=color_fg.get_rgba())
     textrender_extra = Text(f, fontSize=fnt_size_extra,
                             fill=color_fg.get_rgba())
-    text_title = "%s [%s]" % (bmset["title"], bm["version"])
+    text_title = bmset["title"]
     text_title = textrender_major.render(text=text_title)
 
     if(score.get("pp")):
@@ -127,12 +135,16 @@ def illust_score(score: Dict, size=1080, style="dark"):
     star_rating = bm["difficulty_rating"]
     text_score = comma_number(score["score"])
     acc = score["accuracy"]
+    text_ver = bm["version"]
+    if(score.get("mods")):
+        text_ver+="["+", ".join(score["mods"])+"]"
+    text_version=textrender_minor.render(text=text_ver)
     text_scores = "%.2f*, %s/%.2f%%" % (star_rating, text_score, acc*100)
     text_scores = textrender_minor.render(text=text_scores)
 
     text_type = "%s%d" % (score["type"].upper(), score["type_idx"])
     text_type = textrender_minor.render(text=text_type)
-    line2 = [text_type, text_scores]
+    line2 = [text_version, text_scores, text_type]
     line2 = Row(line2, width=w)
 
     line3 = []
@@ -190,33 +202,37 @@ call_kwargs = lambda **kwargs: kwargs
 
 
 def illust_user(user: User, style="dark", size=1080, mode=None):
-    user.get_info(mode)
+    user.get_info(mode = mode)
     bests = user.get_scores("best", mode = mode)
     recents = user.get_scores("recent", mode = mode)
+    stat = user.info.statistics
+    # sizes
+    avatar_size = size//5
+    ls = [1, 0.8, 0.2, 0.3]
+    fnt_major, fnt_minor, fnt_mini, gap = normalize_sum(ls, avatar_size)
 
     avatar = user.info.avatar_url
     avatar = requests.get_image(avatar)[1]
+    avatar = sizefit.fix_height(avatar, avatar_size)
     cover = requests.get_image(user.info.cover_url)[1]
 
-    with print_time("illust_user - colors"):
+    with print_time("illust_user - colors", enabled=False):
         # colors
         c = image_colors(avatar, 1, weight_by_s=True)[0]
-        
+        cover_colors = image_colors(cover, 10)
         color_main = c.replace(S=0.8, L=0.5)
         print_colors([c, color_main])
         if(style == "dark"):
             color_bg = c.replace(L=0.15)
             color_fg = c.replace(L=0.9)
+            cover_colors = [c.replace(L=0.15) for c in cover_colors]
             cover = adjust_L(cover, -0.7)
         else:
             color_bg = c.replace(L=0.85)
             color_fg = c.replace(L=0.1)
+            cover_colors = [c.replace(L=0.85) for c in cover_colors]
             cover = adjust_L(cover, 0.7)
 
-    # sizes
-    avatar_size = size//5
-    ls = [1, 0.8, 0.2, 0.6]
-    fnt_major, fnt_minor, fnt_mini, gap = normalize_sum(ls, avatar_size)
 
     # text
     ftext_content = lambda text, **kwargs: text
@@ -237,7 +253,6 @@ def illust_user(user: User, style="dark", size=1080, mode=None):
     line1 = Row(line1, width=size)
 
     line2 = []
-    stat = user.info.statistics
     if(stat.get("global_rank") is None):
         # no available rank
         pass
@@ -262,7 +277,8 @@ def illust_user(user: User, style="dark", size=1080, mode=None):
     lines = [i for i in lines if i]
 
     col = Column(lines, height=avatar_size)
-    row = Row([avatar, col], borderWidth=gap)
+    row = Row([avatar, col], borderWidth=gap, outer_border=True)
+    # row = addBorder(row, borderWidth=gap)
     row = CompositeBG(row, bg = cover)
     # print_colors(color_fg)
     # return row.render()
@@ -270,28 +286,28 @@ def illust_user(user: User, style="dark", size=1080, mode=None):
     for i in recents[:3]:
         
         with print_time("illust_user - illust_score"):
-            im_score = illust_score(i, size=int(size*0.9))
+            im_score = illust_score(i, size=int(size*0.95))
             columns.append(im_score)
-    print(len(recents), len(bests))
     for i in bests[:10]:
         with print_time("illust_user - illust_score"):
-            im_score = illust_score(i, size=int(size*0.9))
+            im_score = illust_score(i, size=int(size*0.95))
             columns.append(im_score)
         
-    col = Column(columns, alignX=0, borderWidth = gap)
-
-
-    return col.render()
-
+    col = Column(columns, alignX=0.6, borderWidth = gap, outer_border=True).render()
+    # col = addBorder(col, borderWidth = gap).render()
+    w, h = col.size
+    img = triangles(w, h, cover_colors)
+    ret = CompositeBG(col, img)
+    # return col.render()
+    return ret.render()
 
 if(__name__ == "__main__"):
     from .user import User
     ids = ["TkskKurumi"]# , "[Crz]Ha0201"]
     for id in ids:
         u = User(id)
-        scores = u.get_scores()
         # im = illust_score(scores[0], style="dark")
         from ..image.print import image_show_terminal
         # image_show_terminal(im,ra)
-        im = illust_user(u)
+        im = illust_user(u, mode="osu", size=800)
         image_show_terminal(im, rate=1/len(ids))

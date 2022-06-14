@@ -4,7 +4,7 @@ from urllib.parse import urlencode
 from ..io import savejson
 import tempfile
 from os import path
-from ...backend import requests
+from ...backend import requests as cached_request
 from ..image import colors, adjust_L
 from PIL import Image, ImageDraw
 endpoint = 'https://osu.ppy.sh/api/v2'
@@ -41,6 +41,7 @@ class User:
         self.id = id
         # self.info = AttrDict(self.get_info())
         self.get_info()
+        self.id_int = self.info.id
     def get_info(self, mode=None):
         ls = [endpoint, "users", self.id]
         if(mode is not None):
@@ -50,9 +51,6 @@ class User:
         self.info = AttrDict(r.json())
         return self.info
 
-    def id_int(self):
-        info = self.get_info()
-        return info["id"]
 
     def get_scores(self, type="best", params=None, mode=None):
         if(params is None):
@@ -60,7 +58,7 @@ class User:
         if(mode is not None):
             params["mode"] = mode
         params["limit"]=256
-        url = "/".join([endpoint, "users", str(self.id_int()), "scores", type])
+        url = "/".join([endpoint, "users", str(self.id_int), "scores", type])
         if(params):
             url += "?"+urlencode(params)
         r = requests.get(url, headers=credentials.get_header())
@@ -82,8 +80,13 @@ if(__name__ == "__main__"):
     print(pth)
 
     pth = path.join(tempfile.gettempdir(), "user.json")
+    savejson(pth, u.get_info("osu"))
+    print(pth)
+    
+    pth = path.join(tempfile.gettempdir(), "user1.json")
     savejson(pth, u.info)
     print(pth)
+
     # print(u.info.statistics.pp)
     u.get_info(mode = "fruits")
     pth = path.join(tempfile.gettempdir(), "user_afk.json")

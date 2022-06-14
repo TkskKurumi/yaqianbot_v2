@@ -33,7 +33,7 @@ def colored(text, fg: Color = None, bg=None):
 
 
 def image_show_terminal(im, rate = 1):
-    hashed = myhash.base32(np.array(im.resize((4, 4))))
+    hashed = myhash.base32(np.array(im.resize((10, 10))))
     pth = path.join(tempfile.gettempdir(), "%s.png"%hashed)
     im.save(pth)
     ts = shutil.get_terminal_size()
