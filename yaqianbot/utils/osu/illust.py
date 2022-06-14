@@ -39,10 +39,12 @@ def rank_badge(rank="S", font_size=28):
         fgc = (255, 222, 22)
         sdc = Color.from_hsl(240, 1, 0.7)
     elif(rank == "SH"):
+        rank = "S"
         bgc = (0, 170, 180)
         fgc = Color.from_hsl(180, 0.9, 0.95)
         sdc = (0, 100, 100)
-    elif(rank == "SS"):
+    elif(rank == "X"):
+        rank = "SS"
         bgc = (190, 10, 140)
         fgc = Color.from_hsl(180, 0.9, 0.95)
         sdc = (0, 100, 100)
@@ -87,8 +89,10 @@ def illust_score(score: Dict, size=1080, style="dark"):
     # beatmap cover
     bmset = score["beatmapset"]
     bm = score["beatmap"]
-    cover = requests.get_image(bmset["covers"]["slimcover"])[1]
-
+    try:
+        cover = requests.get_image(bmset["covers"]["slimcover"])[1]
+    except Exception:
+        cover = requests.get_image(bmset["covers"]["cover"])[1]
     # colors
     colors = image_colors(cover, 3)
     c = colors[0]
@@ -97,11 +101,11 @@ def illust_score(score: Dict, size=1080, style="dark"):
     if(style == "dark"):
         color_bg = c.replace(L=0.15)
         color_fg = c.replace(L=0.9)
-        cover = adjust_L(cover, -0.7)
+        cover = adjust_L(cover, -0.5)
     else:
         color_bg = c.replace(L=0.85)
         color_fg = c.replace(L=0.1)
-        cover = adjust_L(cover, 0.7)
+        cover = adjust_L(cover, 0.5)
 
     # rank badge
     rank = score["rank"]
@@ -226,12 +230,12 @@ def illust_user(user: User, style="dark", size=1080, mode=None):
             color_bg = c.replace(L=0.15)
             color_fg = c.replace(L=0.9)
             cover_colors = [c.replace(L=0.15) for c in cover_colors]
-            cover = adjust_L(cover, -0.7)
+            cover = adjust_L(cover, -0.5)
         else:
             color_bg = c.replace(L=0.85)
             color_fg = c.replace(L=0.1)
             cover_colors = [c.replace(L=0.85) for c in cover_colors]
-            cover = adjust_L(cover, 0.7)
+            cover = adjust_L(cover, 0.5)
 
 
     # text

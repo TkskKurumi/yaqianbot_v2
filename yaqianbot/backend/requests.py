@@ -19,7 +19,11 @@ def get_image(*args, **kwargs):
     bio = BytesIO()
     bio.write(content)
     bio.seek(0)
-    im = Image.open(bio)
+    try:
+        im = Image.open(bio)
+    except Exception as e:
+        print("Cannot get image", args, kwargs)
+        raise e
     return [r.headers.get('Content-Type'), im]
 
 
