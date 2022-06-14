@@ -6,6 +6,7 @@ from aiocqhttp.message import MessageSegment as MSEG
 from ..bot_threading import threading_run
 from ..base_message import User, Message
 from .. import requests
+from ...utils.candy import print_time
 from . import cqhttp
 from os import path
 from PIL import Image
@@ -15,7 +16,7 @@ import base64
 from io import BytesIO
 
 
-def img_b64(im, limit_size=(2 << 20)):
+def img_b64(im, limit_size=1e6):
 
     if("A" in im.mode):
         format = "PNG"
@@ -29,24 +30,30 @@ def img_b64(im, limit_size=(2 << 20)):
     def _save():
         nonlocal bio, im, format, cur_size, original_size
         bio = BytesIO()
-        im.save(bio, format)
+        im.resize((w, h)).save(bio, format)
         cur_size = bio.tell()
+
+        if((w, h) != (original_w, original_h)):
+            print("Compress image %dx%d %d bytes to %dx%d %d bytes" %
+                (
+                    original_w, original_h, original_size,
+                    w, h, cur_size)
+                )
+
         original_size = original_size or cur_size
         return cur_size
     while(_save() > limit_size):
         r = 0.85*min(1, sqrt(limit_size/cur_size))
         w, h = int(w*r), int(h*r)
-    if((w, h) != (original_w, original_h)):
-        print("Compress image %dx%d %d bytes to %dx%d %d bytes" %
-              (
-                  original_w, original_h, original_size,
-                  w, h, cur_size)
-              )
+    
+            
     bio.seek(0)
     bytes = bio.read()
     bio.close()
-    return base64.b64encode(bytes).decode("ascii")
-
+    
+    with print_time("b64 encode image"):
+        ret = base64.b64encode(bytes).decode("ascii")
+    return ret
 
 def img_file_b64(filename, limit_size=(2 << 20)):
     im = Image.open(filename)
@@ -153,6 +160,8 @@ class CQMessage(Message):
     def get_sent_images(self):
         rpics = self.recent_pics
         ret = []
+        if(not rpics):
+            raise Exception("未发送图片！")
         for i in rpics:
             data = i['data']
             url = data['url']

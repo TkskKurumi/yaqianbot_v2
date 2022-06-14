@@ -2,9 +2,9 @@ from PIL import Image, ImageDraw
 from math import pi
 import numpy as np
 from typing import List
-from .colors import color, WHITE
+from .colors import WHITE, Color
 import math
-
+import random
 
 def np_colormap(arr, colors):
     h, w = arr.shape
@@ -52,7 +52,7 @@ def colorvec(arr: np.ndarray, colors: List):
 
 def grids(w, h, color_h=None, color_v=None, angle=45, gap=None):
     if(color_h is None):
-        color_h = [WHITE, color(128, 128, 128)]
+        color_h = [WHITE, Color(128, 128, 128)]
     if(color_v is None):
         color_v = color_h
     if(gap is None):
@@ -66,18 +66,44 @@ def grids(w, h, color_h=None, color_v=None, angle=45, gap=None):
         for y in range(h):
             horizontal = f(x, y, angle)
             v = f(x, y, angle+90)
-            h_idx = int(horizontal%len(color_h))
-            v_idx = int(v%len(color_v))
+            h_idx = int(horizontal % len(color_h))
+            v_idx = int(v % len(color_v))
             c = (color_h[h_idx]+color_v[v_idx])/2
-            ret.putpixel((x, y), color.aspil(c))
+            ret.putpixel((x, y), Color.aspil(c))
     return ret
 
-
+def random_position(w, h):
+    return random.randrange(w), random.randrange(h)
+def triangles(w, h, colors, n=None, size=None, m=None, strength = 0.5):
+    colors = [i if isinstance(i, Color) else Color(*i) for i in colors]
+    ret = Image.new("RGBA", (w, h), colors[0].get_rgba())
+    if(n is None):
+        n = 10
+    if(m is None):
+        m = 10
+    if(size is None):
+        size = ((w*h)/n/m)**0.5
+        size = size
+    for i in range(m):
+        layer = Image.new("RGBA", (w, h), (0,0,0,0))
+        dr = ImageDraw.Draw(layer)
+        for i in range(n):
+            x, y=random_position(w, h)
+            _size = (random.random()*0.9+0.1)*size
+            _alpha = int(random.random()*strength*255)
+            _color = random.choice(colors).replace(A = _alpha)
+            if(random.random()<0.5):
+                _color=_color.lighten(random.random()**0.5)
+            else:
+                _color=_color.darken(random.random()**0.5)
+            dr.regular_polygon((x, y, size), 3, fill=_color.get_rgba())
+        ret = Image.alpha_composite(ret, layer)
+    return ret
 def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
-    colora = colora or color.from_any("lightpink").get_rgb()
+    colora = colora or Color.from_any("lightpink").get_rgb()
     colorb = colorb or [253, 246, 237]
-    colorc = colorc or color.from_any("paleturquoise").get_rgb()
-    colord = colord or color.from_any("lightcyan").get_rgb()
+    colorc = colorc or Color.from_any("paleturquoise").get_rgb()
+    colord = colord or Color.from_any("lightcyan").get_rgb()
 
     a, b, c, d, e, _f, g, _h = np.random.normal(0, 1, (8, ))
     o, p, q, r = np.abs(np.random.normal(0, 1, (4, )))+1
@@ -97,8 +123,6 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 
 if(__name__ == "__main__"):
-    # for testing
-    import os
-    im = grids(512, 288)
-    im.save("./tmp.png")
-    os.system("code ./tmp.png")
+    from .print import image_show_terminal
+    im = triangles(300, 300, colors = [Color.from_any("CYAN")])
+    image_show_terminal(im)

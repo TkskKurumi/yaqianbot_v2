@@ -51,6 +51,19 @@ def fit_shrink(img, width=None, height=None):
     return img.resize((w, h), Image.Resampling.BILINEAR)
 
 
+def fit_crop(img: Image.Image, width, height, align_x=0.5, align_y=0.5):
+    w, h = img.size
+    if(w*height > width*h):
+        # too wide
+        img = resize_ratio(img, height/h)
+    else:
+        img = resize_ratio(img, width/w)
+    w, h = img.size
+    left = int((w-width)*align_x)
+    top = int((h-height)*align_y)
+    return img.crop((left, top, left+width, top+height))
+
+
 def fit_expand(img: Image.Image, width: int, height: int, align_x: float = 0.5, align_y: float = 0.5, bg=None):
     w, h = img.size
     if(w*height > width*h):

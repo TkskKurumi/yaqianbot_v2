@@ -29,31 +29,31 @@ def image_border_color(img):
     for x in range(w):
         for y in [0, h-1]:
             colors.append(arr[y, x])
-    return color(*np.mean(colors, axis=0))
+    return Color(*np.mean(colors, axis=0))
 
 
 def image_colors(img: Image.Image, k: int, weight_by_s = False, return_type = "color"):
     w, h = img.size
     colors = []
     weights = []
-    for i in range(200):
+    for i in range(10):
         x, y = random.randrange(w), random.randrange(h)
         c = img.getpixel((x, y))
         colors.append(c)
         if(weight_by_s):
-            hue, s, l = color(*c).get_hsl()
+            hue, s, l = Color(*c).get_hsv()
             weights.append(s)
         else:
             weights = None
     ret = kmeans(colors, k, weights=weights)
     if(return_type == "color"):
-        return [color(*i) for i in ret]
+        return [Color(*i) for i in ret]
     else:
         return np.array(ret)
 
 
 @dataclass
-class color:
+class Color:
     R: int = 0
     G: int = 0
     B: int = 0
@@ -63,16 +63,16 @@ class color:
         return (self.R, self.G, self.B, self.A).__iter__()
 
     def __mul__(self, n):
-        return color(*[i*n for i in self])
+        return Color(*[i*n for i in self])
 
     def __truediv__(self, n):
-        return color(*[i/n for i in self])
+        return Color(*[i/n for i in self])
 
     def __add__(self, other):
-        if(isinstance(other, color)):
+        if(isinstance(other, Color)):
             ls1 = list(other)
             ls2 = list(self)
-            return color(*[ls1[i] + ls2[i] for i in range(4)])
+            return Color(*[ls1[i] + ls2[i] for i in range(4)])
         else:
             return NotImplemented
 
@@ -87,7 +87,7 @@ class color:
             h = h1+deltah*n
         else:
             h = (h1+(deltah-360)*n) % 360
-        return color.from_hsl(h, s, l)
+        return Color.from_hsl(h, s, l)
 
     def interpolate_rgb(self, other, n):
         return self*(1-n)+other*n
@@ -164,12 +164,12 @@ class color:
             raise ValueError("RGB or HSL conflicts")
         if(ishsl):
             H, S, L = _list_update_None(self.get_hsl(), (H, S, L))
-            R, G, B = color.from_hsl(H, S, L).get_rgb()
+            R, G, B = Color.from_hsl(H, S, L).get_rgb()
         else:
             R, G, B = _list_update_None(self.get_rgb(), (R, G, B))
         if(A is None):
             A = self.A
-        return color(R, G, B, A)
+        return Color(R, G, B, A)
 
     @classmethod
     def from_hsv(cls, H, S, V, A=255):
@@ -187,13 +187,13 @@ class color:
 
     def lighten(self, rate=0.5):
         H, S, L = self.get_hsl()
-        L = 1-rate + L*rate
-        return color.from_hsl(H, S, L, self.A)
+        L += (1-L)*rate
+        return Color.from_hsl(H, S, L, self.A)
 
     def darken(self, rate=0.5):
         H, S, L = self.get_hsl()
-        L = L*rate
-        return color.from_hsl(H, S, L, self.A)
+        L += (0-L)*rate
+        return Color.from_hsl(H, S, L, self.A)
 
     def weaken(self, rate=0.5):
         return self.replace(A=self.A*rate)
@@ -216,13 +216,13 @@ class color:
         for x in range(w):
             for y in [0, h-1]:
                 colors.append(img.getpixel((x, y)))
-        return color(*np.mean(colors, axis=0))
+        return Color(*np.mean(colors, axis=0))
 
     def hex(self):
         return "#%s%s%s%s" % tuple([hex(i)[2:] for i in self])
 
     def aspil(self):
-        if(isinstance(self, color)):
+        if(isinstance(self, Color)):
             return self.get_rgba()
         else:
             return tuple(self)
@@ -236,21 +236,23 @@ class color:
         return "\u001b[0m"
     def colored_terminal_str(self):
         if(sum(self.get_rgb()) < 3*255/2):
-            fg = color(255, 255, 255)
+            fg = Color(255, 255, 255)
         else:
-            fg = color(0, 0, 0)
+            fg = Color(0, 0, 0)
         return "%s%s%s%s"%(self.as_terminal_bg(), fg.as_terminal_fg(), self, self.as_terminal_rst())
 
-BLACK = color(0, 0, 0)
-WHITE = color(255, 255, 255)
-Color = color
+BLACK = Color(0, 0, 0)
+WHITE = Color(255, 255, 255)
+# Color = Color
 if(__name__ == "__main__"):
     # test
     from .print import print_colors
-    from ..pyxyv import illust
-    ill = illust.Illust(88125445)
-    im = ill.get_pages(0, 1)[0]
-    im = Image.open(im)
-    print(image_colors(im, 5))
-    print_colors(image_colors(im, 10))
+    # from ..pyxyv import illust
+    # ill = illust.Illust(88125445)
+    from ...backend import requests
+    im = requests.get_image(r"https://a.ppy.sh/12243730?1651404862.jpeg")[1]
+    # im = ill.get_pages(0, 1)[0]
+    # im = Image.open(im)
+    print(image_colors(im, 1))
+    print_colors(image_colors(im, 1)[0].replace(S=0.2, L=0.8))
     print_colors(image_border_color(im))
