@@ -2,9 +2,10 @@ from PIL import Image, ImageDraw
 from math import pi
 import numpy as np
 from typing import List
-from .colors import WHITE, Color
+from .colors import WHITE, Color, image_colors
 import math
 import random
+
 
 def np_colormap(arr, colors):
     h, w = arr.shape
@@ -72,9 +73,21 @@ def grids(w, h, color_h=None, color_v=None, angle=45, gap=None):
             ret.putpixel((x, y), Color.aspil(c))
     return ret
 
+
 def random_position(w, h):
     return random.randrange(w), random.randrange(h)
-def triangles(w, h, colors, n=None, size=None, m=None, strength = 0.5):
+
+
+def frandrange(lo, hi):
+    return lo+(hi-lo)*random.random()
+
+
+def triangles(w, h, colors=None, n=None, size=None, m=None, strength=0.5, f_color=None):
+    if(colors is None):
+        if(isinstance(f_color, Image.Image)):
+            colors = image_colors(f_color, 10)
+        else:
+            colors = [Color.from_any("PINK")]
     colors = [i if isinstance(i, Color) else Color(*i) for i in colors]
     ret = Image.new("RGBA", (w, h), colors[0].get_rgba())
     if(n is None):
@@ -83,22 +96,31 @@ def triangles(w, h, colors, n=None, size=None, m=None, strength = 0.5):
         m = 10
     if(size is None):
         size = ((w*h)/n/m)**0.5
-        size = size
+        size = size*1.2
     for i in range(m):
-        layer = Image.new("RGBA", (w, h), (0,0,0,0))
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         dr = ImageDraw.Draw(layer)
         for i in range(n):
-            x, y=random_position(w, h)
-            _size = (random.random()*0.9+0.1)*size
-            _alpha = int(random.random()*strength*255)
-            _color = random.choice(colors).replace(A = _alpha)
-            if(random.random()<0.5):
-                _color=_color.lighten(random.random()**0.5)
+            x, y = random_position(w, h)
+            _size = size*frandrange(0.2, 1.8)
+            if(not f_color):
+                _alpha = int(random.random()*strength*255)
+                _color = random.choice(colors).replace(A=_alpha)
+                if(random.random() < 0.5):
+                    _color = _color.lighten(random.random()**0.5)
+                else:
+                    _color = _color.darken(random.random()**0.5)
+            elif(isinstance(f_color, Image.Image)):
+                _color = Color(*f_color.getpixel((x, y)))
+                _alpha = int(random.random()*strength*255)
+                _color = _color.replace(A=_alpha)
             else:
-                _color=_color.darken(random.random()**0.5)
-            dr.regular_polygon((x, y, size), 3, fill=_color.get_rgba())
+                _color = Color(*f_color(x, y))
+            dr.regular_polygon((x, y, _size), 3, fill=_color.get_rgba())
         ret = Image.alpha_composite(ret, layer)
     return ret
+
+
 def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
     colora = colora or Color.from_any("lightpink").get_rgb()
     colorb = colorb or [253, 246, 237]
@@ -124,5 +146,5 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 if(__name__ == "__main__"):
     from .print import image_show_terminal
-    im = triangles(300, 300, colors = [Color.from_any("CYAN")])
+    im = triangles(300, 300, colors=[Color.from_any("CYAN")])
     image_show_terminal(im)
