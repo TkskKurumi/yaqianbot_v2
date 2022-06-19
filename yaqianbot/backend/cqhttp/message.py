@@ -142,8 +142,6 @@ class CQMessage(Message):
             # print(i)
             if(type == "text"):
                 t = data["text"]
-                if(t.startswith("鲁迅说")):
-                    t = t[3:]
                 ret.append(t)
             elif(type == "image"):
                 im = requests.get_image(data["url"])[1]
