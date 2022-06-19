@@ -35,7 +35,9 @@ class Message:
     plain_text: str = ""
     group: str = ""
     raw: Any = None
-
+    # rich_array = None
+    def get_rich_array(self):
+        raise NotImplementedError()
     def update_rpics(self):
         
         rpics[self.sender] = self.pics or rpics.get(self.sender)

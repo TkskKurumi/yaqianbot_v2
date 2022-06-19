@@ -183,7 +183,12 @@ class Color:
 
     @classmethod
     def from_any(cls, x):
-        return cls(*ImageColor.getrgb(x))
+        if(isinstance(x, tuple)):
+            return cls(*x)
+        elif(isinstance(x, Color)):
+            return x
+        elif(isinstance(x, str)):
+            return cls(*ImageColor.getrgb(x))
 
     def lighten(self, rate=0.5):
         H, S, L = self.get_hsl()

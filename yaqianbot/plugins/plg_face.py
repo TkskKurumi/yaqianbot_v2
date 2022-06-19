@@ -21,6 +21,9 @@ from ..utils.algorithms.kdt import kdt as KDT
 from ..utils.algorithms.kdt import point as KDTPoint
 from ..backend.requests import get_image
 from ..utils.image import sizefit
+from ..utils.image.colors import Color
+
+
 '''
 @receiver
 @threading_run
@@ -207,6 +210,7 @@ def cmd_gunjou(message: CQMessage):
 @command("/三角形", opts={})
 def cmd_triangle(message: CQMessage, *args, **kwargs):
     n = 44
+
     def f(img):
         nonlocal n
         ret = background.triangles(*img.size, f_color=img, n=n, m=n)
@@ -214,6 +218,80 @@ def cmd_triangle(message: CQMessage, *args, **kwargs):
     imgtype, img = message.get_sent_images()[0]
     ret = img_filter(imgtype, img, f)
     return message.response_sync(ret)
+
+
+hanzi2color = {
+    "黑": "BLACK",
+    "白": "WHITE",
+    "红": "RED",
+    "蓝": "BLUE",
+    "粉": "PINK",
+    "千千": "rgb(255,153,164)"
+}
+match_hanzi_color = "|".join(hanzi2color)
+
+
+@receiver
+@threading_run
+@startswith("(%s)底(%s)字" % (match_hanzi_color, match_hanzi_color))
+def cmd_heidibaizi(message: CQMessage):
+    pattern = "(%s)底(%s)字" % (match_hanzi_color, match_hanzi_color)
+    string = message.plain_text
+    match = re.match(pattern, string)
+    bg, fg = match.groups()
+    content = string[match.span()[1]:].strip("\n \r")
+    if(content):
+        bg = Color.from_any(hanzi2color[bg])
+        fg = Color.from_any(hanzi2color[fg])
+        RT = RichText(content, width=512, fontSize=48, bg=bg.get_rgba(
+        ), fill=fg.get_rgba(), alignX=0.5, autoSplit=False, dontSplit=False)
+        im = RT.render()
+        message.response_sync(im)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/油画", opts={})
+def cmd_oilpaint(message: CQMessage, *args, **kwargs):
+    imgtype, img = message.get_sent_images()[0]
+    n = 1000
+    if(args):
+        try:
+            n = int(args[0])
+        except Exception:
+            pass
+    w, h = img.size
+    sz = max(int(((w*h)/n)**0.5)*2, 10)
+
+    def f(img):
+        nonlocal n, sz, w, h
+        ret = Image.new(img.mode, img.size)
+        for i in range(n):
+            p = background.random_position(w, h)
+            color = Color(*img.getpixel(p))
+            # mask = background.random_polygon_mask(
+            #    sz, rnd=0.5, rettype="arr").astype(np.float32)
+            centmask = background.centric_mask(sz, rettype="arr")/255
+            
+            angle = background.frandrange(0, 180)
+            strip=background.random_stripe_mask(sz, ratio=2, blur=1, rettype="arr")
+            mask1 = strip*centmask
+            mask1 = Image.fromarray(mask1.astype(np.uint8)).resize((sz, sz*3))
+            mask1 = mask1.rotate(angle, expand=True, fillcolor=0)
+            mask2 = (255-strip)*centmask
+            mask2 = Image.fromarray(mask2.astype(np.uint8)).resize((sz, sz*3))
+            mask2 = mask2.rotate(angle, expand=True, fillcolor=0)
+
+            paste1 = Image.new(img.mode, mask1.size, color.lighten(0.1).get_rgba())
+            paste2 = Image.new(img.mode, mask1.size, color.darken(0.1).get_rgba())
+            _sz = paste1.size[0]
+            le, up = p[0]-_sz//2, p[1]-_sz//2
+            ret.paste(paste1, box=(le, up), mask=mask1)
+            ret.paste(paste2, box=(le, up), mask=mask2)
+        return ret
+    ret = img_filter(imgtype, img, f)
+    message.response_sync(ret)
 
 
 @receiver
@@ -225,13 +303,13 @@ def cmd_luxunrt(message, *args, **kwargs):
     if(isinstance(mes, str)):
 
         mes = mes_str2arr(mes)
-        print(mes)
+        # print(mes)
     content = []
     url = r"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQHs3ZdlhN-jfFjxKVcLrkP4F3d-bE2qEL6jQ&usqp=CAU"
 
     luxun = get_image(url)[1].convert("RGBA")
     w, h = luxun.size
-    print(mes)
+    # print(mes)
     for i in mes:
         type = i["type"]
         data = i["data"]

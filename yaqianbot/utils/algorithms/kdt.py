@@ -370,7 +370,7 @@ if(__name__ == '__main__'):
         sumd=0
         for p in pointss:
             
-            ret, retd = K.ann(p, recall_alpha=0.7)
+            ret, retd = K.ann(p, recall_alpha=0.9)
             sumd += retd
         return sumd 
     from timeit import timeit

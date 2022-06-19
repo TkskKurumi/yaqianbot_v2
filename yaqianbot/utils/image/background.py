@@ -1,4 +1,4 @@
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from math import pi
 import numpy as np
 from typing import List
@@ -121,6 +121,56 @@ def triangles(w, h, colors=None, n=None, size=None, m=None, strength=0.5, f_colo
     return ret
 
 
+def normalize(arr, lo, hi):
+    mn, mx = np.min(arr), np.max(arr)
+    return (arr-mn).astype(np.float32)/(mx-mn)*(hi-lo)+lo
+
+
+def random_stripe_mask(w, ratio=4, blur=2, rettype="image"):
+    arr = np.random.normal(0, 1, (w//ratio, ))
+    arr = normalize(arr, 0, 255)
+    arr = np.stack([arr]*(w//ratio))
+    im = Image.fromarray(arr.astype(np.uint8))
+    im = im.resize((w, w), Image.Resampling.NEAREST)
+    im = im.filter(ImageFilter.GaussianBlur(blur))
+    if(rettype == "image"):
+        return im
+    else:
+        return np.array(im)
+
+
+def centric_mask(w, rettype="image"):
+    arr = np.zeros((w, w), np.uint8)
+    r = (w-1)/2
+    for x in range(w):
+        for y in range(w):
+            dist = (x-r)*(x-r)+(y-r)*(y-r)
+            dist = dist**0.5
+            # y=kx+b; x=0, y=255; x=r, y=0
+            alpha = max(-dist*255/r+255, 0)
+            arr[x, y] = alpha
+    if(rettype == "image"):
+        return Image.fromarray(arr)
+    else:
+        return arr
+
+
+def random_polygon_mask(w, n=16, rnd=0.2, rettype="image"):
+    r = w/2
+    points = []
+    for i in range(n):
+        angle = 2*pi/n*i
+        _r = frandrange(rnd, 1)*r
+        x, y = r+math.cos(angle)*_r, r+math.sin(angle)*_r
+        points.append((x, y))
+    ret = Image.new("L", (w, w), 0)
+    dr = ImageDraw.Draw(ret)
+    dr.polygon(points, fill=255)
+    if(rettype=="image"):
+        return ret
+    else:
+        return np.array(ret)
+
 def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
     colora = colora or Color.from_any("lightpink").get_rgb()
     colorb = colorb or [253, 246, 237]
@@ -146,5 +196,8 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 if(__name__ == "__main__"):
     from .print import image_show_terminal
-    im = triangles(300, 300, colors=[Color.from_any("CYAN")])
+    a = random_polygon_mask(100, rettype="arr").astype(np.float32)
+    a *= random_stripe_mask(100, ratio=2, blur=1, rettype="arr")/255
+    a *= centric_mask(100, rettype="arr")/255
+    im = Image.fromarray(a.astype(np.uint8))
     image_show_terminal(im)

@@ -6,7 +6,7 @@ from aiocqhttp.message import MessageSegment as MSEG
 from ..bot_threading import threading_run
 from ..base_message import User, Message
 from .. import requests
-from ...utils.candy import print_time
+from ...utils.candy import print_time, log_header
 from . import cqhttp
 from os import path
 from PIL import Image
@@ -96,10 +96,11 @@ def prepare_message(mes):
 
 def mes_str2arr(message):
     pattern = r"(\[CQ:(.+?),(.+?)\])"
+    
     all_cqcode = re.findall(pattern, message)
-    all_plain = re.split(pattern, message)
-    print(all_cqcode)
-    print(all_plain)
+    all_plain = re.split(pattern, message)[::4]
+    # print(log_header(), all_cqcode)
+    # print(log_header(), all_plain)
     ret = []
     for idx, cqmatch in enumerate(all_cqcode):
         cqfull, cqtype, cqparams = cqmatch
@@ -130,6 +131,26 @@ class CQUser(User):
 
 
 class CQMessage(Message):
+    def get_rich_array(self):
+        mes = self.raw.message
+        if(isinstance(mes, str)):
+            mes = mes_str2arr(mes)
+        ret = []
+        for i in mes:
+            type = i["type"]
+            data = i["data"]
+            # print(i)
+            if(type == "text"):
+                t = data["text"]
+                if(t.startswith("鲁迅说")):
+                    t = t[3:]
+                ret.append(t)
+            elif(type == "image"):
+                im = requests.get_image(data["url"])[1]
+                # im = sizefit.fit_shrink(im, w*0.9, h*0.5)
+                ret.append(im)
+        return ret
+        # return super().get_rich_array()
     @classmethod
     def from_cq(cls, event):
         if("group_id" in event):

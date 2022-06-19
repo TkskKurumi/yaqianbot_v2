@@ -1,4 +1,4 @@
-
+from ..backend.receiver_decos import *
 from ..backend import receiver, startswith
 from ..backend.requests import get_avatar
 from ..backend import threading_run, mainpth
@@ -76,7 +76,7 @@ def status_image(user_id, user_name, coin_delta=0, impression_delta=0):
     im_avatar = AvatarCircle(avatar_img, size=avatar_size)
     bg = Image.open(rand_img())
     cols = colors.image_colors(avatar_img, 3)
-    color_a, color_b, color_c = [colors.color(*i).replace(S=0.5, L=0.5, A=255) for i in cols]  # nopep8
+    color_a, color_b, color_c = [colors.Color(*i).replace(S=0.5, L=0.5, A=255) for i in cols]  # nopep8
     light_a, light_b, light_c = color_a.replace(L=0.9), color_b.replace(L=0.9), color_c.replace(L=0.9)  # nopep8
     dark_a, dark_b, dark_c = color_a.replace(
         L=0.1), color_b.replace(L=0.1), color_c.replace(L=0.1)
@@ -118,6 +118,7 @@ def status_image(user_id, user_name, coin_delta=0, impression_delta=0):
     return ret.render()
 @ receiver
 @ threading_run
+@ on_exception_response
 @ startswith("/签到")
 def cmd_qiandao(message: CQMessage):
     coin_earn = int(bot_config.get("DAILY_BONUS_COIN_EARN", 10))
