@@ -37,6 +37,13 @@ def colormap(arr: np.ndarray, colors: List):
     return Image.fromarray(meow.astype(np.uint8))
 
 
+def arangexy(w, h):
+    xs = np.arange(w)
+    ys = np.arange(h)
+    idxs = np.array(np.meshgrid(ys, xs)).T.reshape(h, w, 2)
+    return idxs
+
+
 def unicorn1(w, h, width=None, colors: List = None):
     if(colors is None):
         tmp = "lightpink paleturquoise lightcyan"
@@ -53,17 +60,43 @@ def unicorn1(w, h, width=None, colors: List = None):
         angle = random.random()*math.pi
         mult = [math.cos(angle), math.sin(angle)]
         weight = idxs*mult/width
-        weight = np.sum(weight,axis=-1)
+        weight = np.sum(weight, axis=-1)
         weight = np.sin(weight)+1
         weights.append(weight)
     arr = np.stack(weights, axis=-1)
     return colorvec(arr, [c.get_rgba() for c in colors])
+
+
+def colorvec1(arr: np.ndarray, colors: List, rettype = "im"):
+    h, w = arr.shape[:2]
+    ch = len(colors[0])
+    n_colors = len(colors)
+    def zeros(channels = None):
+        nonlocal h, w, ch
+        if(channels is None):
+            channels = ch
+        return np.zeros((h, w, channels), np.float32)
+    sum = zeros()
+    sumw = zeros(channels=1)
+    for i in range(n_colors):
+        weight = arr[:, :, i:i+1]
+        col = zeros()+colors[i]
+        sum += col*weight
+        sumw += weight
+    ret = sum/sumw
+    if(rettype == 'im'):
+        return Image.fromarray(ret.astype(np.uint8))
+    else:
+        return ret
+    
+
+
 def colorvec(arr: np.ndarray, colors: List):
     h, w = arr.shape[:2]
     n_ch = len(colors[0])
     n_color = len(colors)
-    color_arr = np.array(colors, np.float16)
-    ret = np.zeros((h, w, n_ch), np.float16)
+    color_arr = np.array(colors, np.float32)
+    ret = np.zeros((h, w, n_ch), np.float32)
     for y in range(h):
         for x in range(w):
             for i in range(n_color):
@@ -217,6 +250,12 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 
 if(__name__ == "__main__"):
-    from .print import image_show_terminal
-    im = unicorn1(100, 100, colors="RED GREEN BLUE")
-    image_show_terminal(im)
+    # from .print import image_show_terminal
+    # im = unicorn1(100, 100, colors="RED GREEN BLUE")
+    # image_show_terminal(im)
+    w = 10
+    h = 20
+    a = arangexy(w, h)
+    for y in range(h):
+        for x in range(w):
+            print(y, x, a[y, x])

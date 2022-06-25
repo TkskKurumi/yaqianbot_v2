@@ -3,11 +3,12 @@ from ..backend.receiver_decos import on_exception_response, command
 from ..backend import receiver, startswith
 from ..backend import threading_run
 from ..backend.cqhttp import CQMessage
+from ..utils import np_misc
 import re
 import random
 from datetime import timedelta
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from ..utils import image, algorithms
 from ..utils.image.sizefit import fit_shrink, fix_width
 from ..utils.image import sizefit, colors
@@ -273,9 +274,10 @@ def cmd_oilpaint(message: CQMessage, *args, **kwargs):
             # mask = background.random_polygon_mask(
             #    sz, rnd=0.5, rettype="arr").astype(np.float32)
             centmask = background.centric_mask(sz, rettype="arr")/255
-            
+
             angle = background.frandrange(0, 180)
-            strip=background.random_stripe_mask(sz, ratio=2, blur=1, rettype="arr")
+            strip = background.random_stripe_mask(
+                sz, ratio=2, blur=1, rettype="arr")
             mask1 = strip*centmask
             mask1 = Image.fromarray(mask1.astype(np.uint8)).resize((sz, sz*3))
             mask1 = mask1.rotate(angle, expand=True, fillcolor=0)
@@ -283,8 +285,10 @@ def cmd_oilpaint(message: CQMessage, *args, **kwargs):
             mask2 = Image.fromarray(mask2.astype(np.uint8)).resize((sz, sz*3))
             mask2 = mask2.rotate(angle, expand=True, fillcolor=0)
 
-            paste1 = Image.new(img.mode, mask1.size, color.lighten(0.1).get_rgba())
-            paste2 = Image.new(img.mode, mask1.size, color.darken(0.1).get_rgba())
+            paste1 = Image.new(img.mode, mask1.size,
+                               color.lighten(0.1).get_rgba())
+            paste2 = Image.new(img.mode, mask1.size,
+                               color.darken(0.1).get_rgba())
             _sz = paste1.size[0]
             le, up = p[0]-_sz//2, p[1]-_sz//2
             ret.paste(paste1, box=(le, up), mask=mask1)
@@ -292,18 +296,51 @@ def cmd_oilpaint(message: CQMessage, *args, **kwargs):
         return ret
     ret = img_filter(imgtype, img, f)
     message.response_sync(ret)
+
+
 @receiver
 @threading_run
 @on_exception_response
-@command("/云",opts={})
+@command("/云", opts={})
 def cmd_cloud(message, *args, **kwargs):
 
     border_color = None
+    bluesky = None
     def f(img):
-        nonlocal border_color
+        nonlocal border_color, bluesky        
+        from ..utils.candy import log_header
+        img = img.convert("RGB")
+        arr = np.array(img)
+        h, w, ch = arr.shape
         if(border_color is None):
-            border_color = colors.image_border_color(img)
-        
+            border_color = colors.image_border_color(img, rettype="np")
+        if(bluesky is None):
+            xys = background.arangexy(w, h)
+            print(log_header(), "xys", xys.shape)
+            weight_y0 = xys[:,:,0]
+            weight_y1 = h-weight_y0
+            _arr = np.stack([weight_y0, weight_y1],axis=-1)
+            print(log_header(), "_arr", _arr.shape)
+            bluesky = background.colorvec1(_arr, [(121, 191, 246), (9, 71, 152)])
+            print(log_header(), "blue sky", bluesky.size)
+        diff = np_misc.vecs_l2dist(arr, border_color, keepdims=False)  # h x w
+        # print(log_header(), diff.shape)
+        diff = np_misc.normalize_range(diff, 0, 0.8)
+        # print(log_header(), diff.shape)
+        rnd = np.random.uniform(0, 1, diff.shape)
+        mask = rnd < diff
+        mask = mask.astype(np.uint8)*255
+        # print(log_header(), mask.shape)
+        mask = Image.fromarray(mask).filter(ImageFilter.GaussianBlur(3))
+        white = Image.new("RGB", (w, h), (255,)*3)
+        ret = bluesky.copy()
+        ret.paste(white, mask=mask)
+        return ret
+    imgtype, img = message.get_sent_images()[0]
+    ret = img_filter(imgtype, img, f)
+    message.response_sync(ret)
+
+
 @receiver
 @threading_run
 @on_exception_response
