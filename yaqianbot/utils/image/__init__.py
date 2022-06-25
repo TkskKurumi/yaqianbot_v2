@@ -1,4 +1,5 @@
 from .background import *
+from .process import adjust_A
 from .colors import Color, image_colors
 import numpy as np
 from PIL import Image
@@ -29,6 +30,7 @@ def gif_frames_fps(gifimg):
     if(dur == 0):
         dur = 1000
     return frames, len(frames)/(dur/1000)
+
 
 
 def adjust_L(im, adjust=-0.9):

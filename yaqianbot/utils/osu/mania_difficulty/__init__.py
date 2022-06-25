@@ -439,11 +439,11 @@ class Chart:
             difficulty_cache[cache_key]=ret
         return ret
 
-    def plot(self):
+    def plot(self, width = 1280, height=960, dpi=80, transparent=True):
 
         by_time, overall = self.calc_all()
 
-        plt.figure(figsize=(1024//80, 768//80), dpi=80)
+        plt.figure(figsize=(width//dpi, height//dpi), dpi=dpi)
         # polar radar
         plt.subplot(2, 2, 1, polar=True)
         plt.title(self.title)
@@ -473,14 +473,14 @@ class Chart:
 
         plt.subplot(2, 2, 4)
         # for label in list(self.all_pattern_partial())+["Stamina"]:
-        # for label in ["Streamish", "Jackish", "Tech"]:
-        for label in ["Overall", "Stamina"]:
+        for label in ["Streamish", "Jackish"]:
+        # for label in ["Overall", "Stamina"]:
             plt.plot(by_time["Time"], by_time[label], label=label)
 
         plt.legend()
 
         bio = io.BytesIO()
-        plt.savefig(bio)
+        plt.savefig(bio, transparent=transparent)
         plt.clf()
         bio.seek(0)
         return Image.open(bio)

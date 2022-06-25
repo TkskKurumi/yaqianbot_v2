@@ -292,8 +292,18 @@ def cmd_oilpaint(message: CQMessage, *args, **kwargs):
         return ret
     ret = img_filter(imgtype, img, f)
     message.response_sync(ret)
+@receiver
+@threading_run
+@on_exception_response
+@command("/云",opts={})
+def cmd_cloud(message, *args, **kwargs):
 
-
+    border_color = None
+    def f(img):
+        nonlocal border_color
+        if(border_color is None):
+            border_color = colors.image_border_color(img)
+        
 @receiver
 @threading_run
 @on_exception_response

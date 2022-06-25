@@ -200,7 +200,7 @@ class CQMessage(Message):
         prepare(message=prepare_message(message))
         # print(args)
         ret = cqhttp._bot.sync.send_msg(**args)
-
+        return ret
     async def response_async(self, message, at=False, reply=False):
         args = dict()
 

@@ -22,10 +22,9 @@ def rand_img(message: CQMessage):
     last_illust[message.sender] = ill
     return random.choice(imgs)
 
-
 @receiver
 @threading_run
-@startswith("/pix")
+@startswith("/pix$")
 def cmd_pixiv(message: CQMessage):
     today = _getRankingToday()
     delta = abs(random.normalvariate(0, 300))

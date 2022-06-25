@@ -19,7 +19,7 @@ def _dist(a, b):
     return (np.sum((a-b)**2))**0.5
 
 
-def image_border_color(img):
+def image_border_color(img, rettype = "color"):
     colors = []
     w, h = img.size
     arr = img.__array__()
@@ -29,7 +29,12 @@ def image_border_color(img):
     for x in range(w):
         for y in [0, h-1]:
             colors.append(arr[y, x])
-    return Color(*np.mean(colors, axis=0))
+    if(rettype == "color"):
+        return Color(*np.mean(colors, axis=0))
+    elif(rettype == "np"):
+        return np.mean(colors, axis=0)
+    else:
+        raise ValueError(rettype)
 
 
 def image_colors(img: Image.Image, k: int, weight_by_s = False, return_type = "color"):
@@ -178,6 +183,7 @@ class Color:
 
     @classmethod
     def from_hsl(cls, H, S, L, A=255):
+        H = H%360
         r, g, b = ImageColor.getrgb("hsl(%d,%d%%,%d%%)" % (H, S*100, L*100))
         return cls(r, g, b, A)
 

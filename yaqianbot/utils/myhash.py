@@ -1,7 +1,7 @@
 import numpy as np
 def imghash(img, length=10):
     im = img.convert("RGB").resize((10, 10))
-    return base32(np.array(im))
+    return base32(np.array(im), length=length)
 def myhash(x, length = 50):
     mask = (1<<length)-1
     offset = 7

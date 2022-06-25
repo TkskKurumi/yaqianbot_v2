@@ -37,6 +37,27 @@ def colormap(arr: np.ndarray, colors: List):
     return Image.fromarray(meow.astype(np.uint8))
 
 
+def unicorn1(w, h, width=None, colors: List = None):
+    if(colors is None):
+        tmp = "lightpink paleturquoise lightcyan"
+        colors = [Color.from_any(i) for i in tmp.split()]
+    elif(isinstance(colors, str)):
+        colors = [Color.from_any(i) for i in colors.split()]
+    if(width is None):
+        width = math.sqrt(w*w+h*h)/30
+    xs = np.arange(w)
+    ys = np.arange(h)
+    idxs = np.array(np.meshgrid(ys, xs)).T.reshape(h, w, 2)
+    weights = []
+    for i in range(len(colors)):
+        angle = random.random()*math.pi
+        mult = [math.cos(angle), math.sin(angle)]
+        weight = idxs*mult/width
+        weight = np.sum(weight,axis=-1)
+        weight = np.sin(weight)+1
+        weights.append(weight)
+    arr = np.stack(weights, axis=-1)
+    return colorvec(arr, [c.get_rgba() for c in colors])
 def colorvec(arr: np.ndarray, colors: List):
     h, w = arr.shape[:2]
     n_ch = len(colors[0])
@@ -166,10 +187,11 @@ def random_polygon_mask(w, n=16, rnd=0.2, rettype="image"):
     ret = Image.new("L", (w, w), 0)
     dr = ImageDraw.Draw(ret)
     dr.polygon(points, fill=255)
-    if(rettype=="image"):
+    if(rettype == "image"):
         return ret
     else:
         return np.array(ret)
+
 
 def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
     colora = colora or Color.from_any("lightpink").get_rgb()
@@ -196,8 +218,5 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 if(__name__ == "__main__"):
     from .print import image_show_terminal
-    a = random_polygon_mask(100, rettype="arr").astype(np.float32)
-    a *= random_stripe_mask(100, ratio=2, blur=1, rettype="arr")/255
-    a *= centric_mask(100, rettype="arr")/255
-    im = Image.fromarray(a.astype(np.uint8))
+    im = unicorn1(100, 100, colors="RED GREEN BLUE")
     image_show_terminal(im)

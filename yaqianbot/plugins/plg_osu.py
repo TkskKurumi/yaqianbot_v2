@@ -8,11 +8,41 @@ from ..utils.jsondb import jsondb
 from ..utils.osu import user, illust
 qq2osu = jsondb(path.join(mainpth, "osu", "qq2osu"), method=lambda x:str(x)[:3])
 
+def osu_recent(message, *args, **kwargs):
+    mode = kwargs.get("mode") or kwargs.get("m")
+    osuid = kwargs.get("user") or kwargs.get("u")
+    if(osuid is None):
+        qqid = message.sender.id
+        if(qqid in qq2osu):
+            osuid = qq2osu[qqid]
+        else:
+            message.response_sync("请用-user/-u选项指定要查询的用户名喵")
+            return
+    score_type = args[0].lower()
+    index = max(int(args[1]), 1)
+    if(score_type not in "r recent b best".split()):
+        message.response_sync("未知的成绩类型%s"%score_type)
+        return
+    for i in "recent best".split():
+        if(i.startswith(score_type)):
+            score_type = i
+    u = user.User(osuid)
+    scores = u.get_scores(type=score_type, mode=mode)
+    if(index > len(scores)):
+        message.response_sync("没有%s成绩"%(" ".join(args), ))
+        return
+    else:
+        score = scores[index-1]
+        im = illust.illust_score_detail(score)
+        message.response_sync(im)
 @receiver
 @threading_run
 @on_exception_response
-@command("/osu", {"-set", "-m", "-mode"}, bool_opts={"-set"})
+@command("/osu", {"-set", "-m", "-mode", "-user", "-u"}, bool_opts={"-set"})
 def cmd_osu(message: CQMessage, *args, **kwargs):
+    if(args):
+        if(args[0] in "r recent b best".split()):
+            return osu_recent(message, *args, **kwargs)
     set_osuid = kwargs.get("set", False)
     mode = kwargs.get("mode") or kwargs.get("m")
     qqid = message.sender.id
@@ -23,7 +53,7 @@ def cmd_osu(message: CQMessage, *args, **kwargs):
             message.response_sync("未知您的OSU!id !!")
             return
     else:
-        osuid = args[0]
+        osuid = " ".join(args)
         if(qqid not in qq2osu):
             set_osuid = True
     if(set_osuid):

@@ -24,6 +24,7 @@ def cmd_handle_lnk(message: Message):
 @receiver
 @threading_run
 @startswith("/exec")
+@on_exception_response
 @is_su
 def cmd_exec(message: CQMessage):
     text = message.plain_text

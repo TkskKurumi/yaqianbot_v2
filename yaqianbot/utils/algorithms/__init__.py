@@ -18,7 +18,7 @@ def kmeans(points, k, iter=8, weights = None):
             dist = np.array(rets, np.float16)-p
             dist = dist**2
             dist = np.sum(dist, axis=-1)
-            idx = np.argmax(dist)
+            idx = np.argmin(dist)
             # print(pointsum, p)
             pointsum[idx] += p*weights[i]
             pointn[idx] += weights[i]

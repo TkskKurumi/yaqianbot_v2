@@ -33,7 +33,8 @@ class heap(list):
         tmp = self[i]
         self[i] = self[j]
         self[j] = tmp
-
+    def top(self):
+        return self[0]
     def push(self, element):
         fcmp = self.fcmp
         idx = len(self)

@@ -28,7 +28,7 @@ def make_gif(frames: List[Image.Image], fps=24, area=None, frame_area_sum=None):
             im = i
         resized.append(im)
         tmp = np.array(im.resize((4, 4)))
-        print(myhash.myhash(tmp))
+        # print(myhash.myhash(tmp))
         hashed = (hashed << 7) ^ myhash.myhash(tmp)
         hashed = (hashed & mask) ^ (hashed >> hash_len)
     hashed = myhash.base32(hashed)
