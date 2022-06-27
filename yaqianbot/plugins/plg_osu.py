@@ -19,7 +19,10 @@ def osu_recent(message, *args, **kwargs):
             message.response_sync("请用-user/-u选项指定要查询的用户名喵")
             return
     score_type = args[0].lower()
-    index = max(int(args[1]), 1)
+    if(len(args)>1):
+        index = max(int(args[1]), 1)
+    else:
+        index = 1
     if(score_type not in "r recent b best".split()):
         message.response_sync("未知的成绩类型%s"%score_type)
         return

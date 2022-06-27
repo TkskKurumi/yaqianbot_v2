@@ -5,7 +5,7 @@ from .candy import locked
 import json
 import os
 from threading import Lock
-
+from glob import glob
 
 def loadjson(pth):
     with open(pth, "r") as f:
@@ -38,14 +38,37 @@ class jsondb:
         hashed = self.method(key)
         pth = path.join(self.pth, hashed+".json")
         return pth
-
-    def _load(self, key):
-        pth = self._get_pth(key)
+    def _load_all(self):
+        for i in glob(path.join(self.pth, "*.json")):
+            self._load(pth = i)
+    def _asdict(self):
+        self._load_all()
+        ret = dict()
+        for i, j in self.d.items():
+            ret.update(j)
+        return ret
+    def _iter(self):
+        return self._asdict().__iter__()
+    def __iter__(self):
+        with locked(self.lock):
+            ret = self._iter()
+        return ret
+    def _load(self, key=None, pth=None):
+        if(pth is None):
+            if(key is not None):
+                hashed = self.method(key)
+                pth = self._get_pth(key)
+            else:
+                raise Exception("Either key or pth should be specified")
+        else:
+            bn = path.basename(pth)
+            bn, ext = path.splitext(bn)
+            hashed = bn
         if(pth in self.loaded):
-            return self.d[self.method(key)]
+            return self.d[hashed]
         if(path.exists(pth)):
             j = loadjson(pth)
-            self.d[self.method(key)] = j
+            self.d[hashed] = j
         else:
             j = {}
         self.loaded.add(pth)
@@ -90,12 +113,25 @@ class jsondb:
             return self[key]
         else:
             return default
-
+    def _items(self):
+        return self._asdict().items()
+    def items(self):
+        with locked(self.lock):
+            ret = self._items()
+        return ret
+    def _pop(self, key):
+        ret = self._getitem(key)
+        hashed = self.method(key)
+        self.d[hashed].pop(key)
+        self._save(key)
+        return ret
+    def pop(self, key):
+        with locked(self.lock):
+            ret = self._pop(key)
+        return ret
 if(__name__ == "__main__"):
     import time
-    
     dic = jsondb("/tmp/tmpjsondb")
-    print(dic.get("a","no"))
-    dic["a"] = time.time()
-    print(dic["a"])
-    
+    print(dic.items())
+    dic.pop("a")
+    print(dic.items())

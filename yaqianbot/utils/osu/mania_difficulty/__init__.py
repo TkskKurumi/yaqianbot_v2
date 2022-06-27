@@ -165,15 +165,20 @@ class Chart:
 
     def calc_jumpstream_partial(self, multi):
         ls = list(multi)
+        
         if(not ls):
             return 0
         duration = max(ls)-min(ls)
         meow = 0
+        last_cols = set()
         for i in ls:
-            if(len(multi[i]) >= 2):
+            notes = multi[i]
+            cols = set([note[0] for note in notes])
+
+            if(len(cols-last_cols) >= 2):
                 meow += 2
-            else:
-                meow += 0.5
+            
+            last_cols = cols
         single = 0
         for i in ls:
             if(len(multi[i]) == 1):
@@ -183,7 +188,7 @@ class Chart:
             return 0
         d_meow = meow/(duration/1000)
         d_single = single/(duration/1000)
-        return geometric_mean([d_single, d_meow], [1, 1.5])*0.709*0.87
+        return geometric_mean([d_single, d_meow], [1, 2])/1.32
 
     def calc_jack_column(self, notes):
         if(not notes):
@@ -191,7 +196,7 @@ class Chart:
 
         last = notes[0][-1]
         scores = dict()
-        for interval in [2, 5]:
+        for interval in [3]:
             meow = list()
             weight = list()
             for idx, i in enumerate(notes[interval:]):
@@ -200,23 +205,23 @@ class Chart:
                 tmp = (st-last)/1000/(interval**1.25)
                 try:
                     _ = 1/(tmp+EPS)
-                    meow.append(_**JACK_BETA)
+                    meow.append(_)
                     weight.append(_**(JACK_ALPHA+JACK_BETA))
                 except ZeroDivisionError as e:
                     print(st, last, tmp)
                     print(i)
                     print(notes[idx])
                     raise e
-            if(not meow):
+            if(len(meow)<3):
                 return 0
-            return weighted_mean(meow, weight)
+            scores[interval] = weighted_mean(meow, weight)
             # meow_idx = [(idx, i) for idx, i in enumerate(meow)]
             # sorted_meow = sorted(meow_idx, key=lambda x:-x[1])
             # sorted_weight = [(0.5**idx)*weight[idx] for idx, i in sorted_meow]
             # sorted_meow = [i for idx, i in sorted_meow]
             # # scores[interval] = weighted_mean(meow, weight)
             # scores[interval] = weighted_mean(sorted_meow, sorted_weight)
-        ret = geometric_mean([scores[3], scores[5]], [3, 5])
+        ret = scores[3]
         return ret
 
     def calc_jack_partial(self, multi):
@@ -235,7 +240,7 @@ class Chart:
         weights = [2.5**i for i in range(len(sd))]
         # ret = weighted_mean([soft, mx], [1, 5])
         ret = weighted_mean(sd, weights)
-        return ret*1.06
+        return ret*1.07
 
     def calc_chordjack_partial(self, multi, debug=None):
 
@@ -256,16 +261,22 @@ class Chart:
                 merged = cols | last_cols
                 n = len(inter)
                 m = len(merged)
-                complexity = n*(m-n+1)
+                # 三押，俩叠 2*4 = 8
+                # 俩押，一叠 1*3 = 3
+                complexity = (n**0.5)*m
 
                 interval = (i-last)/1000/noteinterval
                 strength = (1/(interval+EPS))
-                meow.append(geometric_mean(
-                    [complexity**1.2, strength], [2, JACK_ALPHA]))
+
+                _meow = geometric_mean([complexity, strength])
+                meow.append(_meow)
+                weight.append(_meow**(JACK_ALPHA+JACK_BETA))
                 # strengths.append(geometric_mean([n,n,strength]))
-                # print(interval)
-            scores[noteinterval] = soft_greatest(meow)
-        return weighted_mean([scores[1], scores[2]], [2, 1])*1.15
+                # print(int`erval)
+            if(len(meow)<3):
+                return 0
+            scores[noteinterval] = weighted_mean(meow, weight)
+        return weighted_mean([scores[1], scores[2]], [2, 1])*1.326
 
     def calc_tech_partial(self, multi):
         b = self.calc_jack_partial(multi)
@@ -279,7 +290,8 @@ class Chart:
     def calc_overall_partial(self, multi):
         streamish = self.calc_streamish_partial(multi)
         jackish = self.calc_jackish_partial(multi)
-        return max(streamish, jackish)
+        mx, mn=max(streamish, jackish), min(streamish, jackish)
+        return mx*0.75+mn*0.25
         # st = self.calc_stream_partial(multi)
         # js = self.calc_jumpstream_partial(multi)
         # hs = self.calc_handstream_partial(multi)
@@ -324,11 +336,18 @@ class Chart:
             return 0
         duration = max(ls)-min(ls)
         meow = 0
+        last_cols = set()
         for i in ls:
-            if(len(multi[i]) >= 3):
+            notes = multi[i]
+            cols = set([note[0] for note in notes])
+
+            if(len(cols-last_cols) >= 3):
                 meow += 2
-            elif(len(multi[i]) >= 2):
-                meow += 0.5
+            elif(len(cols-last_cols) >= 2):
+                meow+=0.5
+            
+            last_cols = cols
+
 
         single = 0
         for i in ls:
@@ -339,7 +358,7 @@ class Chart:
             return 0
         d_meow = meow/(duration/1000)
         d_single = single/(duration/1000)
-        return geometric_mean([d_single, d_meow], [1, 1.5])*1.25
+        return geometric_mean([d_single, d_meow], [1, 2])*1.369
 
     @classmethod
     def from_osu_string(cls, s, dt=False, rate=1, cache_key = None):
@@ -439,7 +458,7 @@ class Chart:
             difficulty_cache[cache_key]=ret
         return ret
 
-    def plot(self, width = 1280, height=960, dpi=80, transparent=True):
+    def plot(self, width = 1280, height=960, dpi=80, transparent=False):
 
         by_time, overall = self.calc_all()
 
