@@ -35,25 +35,25 @@ def img_b64(im, limit_size=1e6):
 
         if((w, h) != (original_w, original_h)):
             print("Compress image %dx%d %d bytes to %dx%d %d bytes" %
-                (
-                    original_w, original_h, original_size,
-                    w, h, cur_size)
-                )
+                  (
+                      original_w, original_h, original_size,
+                      w, h, cur_size)
+                  )
 
         original_size = original_size or cur_size
         return cur_size
     while(_save() > limit_size):
         r = 0.85*min(1, sqrt(limit_size/cur_size))
         w, h = int(w*r), int(h*r)
-    
-            
+
     bio.seek(0)
     bytes = bio.read()
     bio.close()
-    
+
     with print_time("b64 encode image"):
         ret = base64.b64encode(bytes).decode("ascii")
     return ret
+
 
 def img_file_b64(filename, limit_size=(2 << 20)):
     im = Image.open(filename)
@@ -96,7 +96,7 @@ def prepare_message(mes):
 
 def mes_str2arr(message):
     pattern = r"(\[CQ:(.+?),(.+?)\])"
-    
+
     all_cqcode = re.findall(pattern, message)
     all_plain = re.split(pattern, message)[::4]
     # print(log_header(), all_cqcode)
@@ -149,8 +149,12 @@ class CQMessage(Message):
                 ret.append(im)
         return ret
         # return super().get_rich_array()
+
     @classmethod
     def from_cq(cls, event):
+        
+        ated = list()
+        self_id = str(event.get("self_id"))
         if("group_id" in event):
             group = str(event.group_id)
             sender = CQUser.from_cq(event.sender, event.group_id)
@@ -162,21 +166,29 @@ class CQMessage(Message):
         if(isinstance(mes, str)):
             mes = mes_str2arr(mes)
         pics = list()
-        ated = list()
+        plain_texts = []
         for i in mes:
             type = i.get("type")
             data = i.get("data", dict())
             if(type == "image"):
                 pics.append(i)
+                plain_texts.append("[图片]")
             elif(type == "at"):
-                ated.append(data.get("qq"))
-        plain_text = html.unescape(event.raw_message)
+                ated.append(str(data.get("qq")))
+            elif(type == "text"):
+                plain_texts.append(data["text"])
+            else:
+                pass
+        # plain_text = html.unescape(event.raw_message)
+        plain_text = "".join(plain_texts)
+        # import inspect
+        # print(inspect.signature(cls.__init__).parameters.items())
         ret = cls(sender=sender, pics=pics, ated=ated,
-                  plain_text=plain_text, group=group, raw=event)
+                  plain_text=plain_text, group=group, raw=event, self_id=self_id)
         ret.update_rpics()
         return ret
 
-    def get_sent_images(self):
+    def get_sent_images(self, rettype="image", **kwargs):
         rpics = self.recent_pics
         ret = []
         if(not rpics):
@@ -184,7 +196,10 @@ class CQMessage(Message):
         for i in rpics:
             data = i['data']
             url = data['url']
-            im = requests.get_image(url)
+            if(rettype == "image"):
+                im = requests.get_image(url)
+            else:
+                im = requests.get_file(url, **kwargs)
             ret.append(im)
         return ret
 
@@ -201,6 +216,7 @@ class CQMessage(Message):
         # print(args)
         ret = cqhttp._bot.sync.send_msg(**args)
         return ret
+
     async def response_async(self, message, at=False, reply=False):
         args = dict()
 

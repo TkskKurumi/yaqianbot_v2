@@ -5,7 +5,7 @@ def imghash(img, length=10):
 def myhash(x, length = 50):
     mask = (1<<length)-1
     offset = 7
-    if(isinstance(x, list) or isinstance(x, tuple) or isinstance(x, np.ndarray)):
+    if(isinstance(x, list) or isinstance(x, tuple) or isinstance(x, np.ndarray) or isinstance(x, bytes)):
         ret = 0
         for i in x:
             ret = ret<<offset

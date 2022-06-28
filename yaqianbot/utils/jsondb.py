@@ -132,6 +132,6 @@ class jsondb:
 if(__name__ == "__main__"):
     import time
     dic = jsondb("/tmp/tmpjsondb")
-    print(dic.items())
-    dic.pop("a")
-    print(dic.items())
+    dic["foo"]="bar"
+    print(dic._asdict())
+    print(list(dic))

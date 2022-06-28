@@ -2,6 +2,16 @@ import numpy as np
 import random
 from collections import defaultdict
 
+def lower_bound(ls, key, cmp=lambda x, key: x >= key):
+    le = 0
+    ri = len(ls)-1
+    while(le <= ri):
+        mid = (le+ri) >> 1
+        if(cmp(ls[mid], key)):
+            ri = mid-1
+        else:
+            le = mid+1
+    return le
 
 def kmeans(points, k, iter=8, weights = None):
     n = len(points)

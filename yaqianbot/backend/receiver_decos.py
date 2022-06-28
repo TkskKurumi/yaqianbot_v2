@@ -6,14 +6,20 @@ import re
 from ..utils.trace import __FILE__, __FUNC__, __LINE__
 from .configure import bot_config
 from ..utils.parse_args import parse_args
-
+def is_ated(func):
+    @wraps(func)
+    def inner(message: Message):
+        if(message.is_ated):
+            return func(message)
+        return None
+    return inner
 def is_su(func):
     @wraps(func)
     def inner(message: Message):
         uid = message.sender.id
         sus = bot_config.get("SUPERUSERS", "").split()
         if(str(uid) in sus):
-            func(message)
+            return func(message)
         else:
             pass
     return inner
