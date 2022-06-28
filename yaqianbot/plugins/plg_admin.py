@@ -6,7 +6,7 @@ from ..utils.myhash import base32
 lnks = dict()
 
 def link(name, func):
-    nm = "/"+base32(name, 4)
+    nm = "/"+base32(name, 3)
     lnks[nm] = func
     return nm
 

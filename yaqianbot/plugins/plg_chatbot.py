@@ -44,7 +44,7 @@ class Chat:
         key, value = self.item()
         db[key] = value
 
-
+chatbot_img_path = path.join(mainpth, "chatbot", "images")
 saved_chats = jsondb(path.join(mainpth, "chatbot", "chat"),
                      method=lambda x: str(x)[:3])
 pending_chats = jsondb(path.join(mainpth, "chatbot", "pending_chat"),
@@ -95,7 +95,15 @@ def weighted_choice(choices, weights):
     rnd = random.random()*weight_sum
     idx = lower_bound(prefix_sum, rnd)
     return choices[idx]
-
+def replace(message_ls, *args):
+    ret = []
+    for idx, i in enumerate(message_ls):
+        for j in range(0, len(args), 2):
+            src = args[j]
+            dst = args[j+1]
+            i = i.replace(src, dst)
+        ret.append(i)
+    return ret
 def show_pending(message, key=None):
     if(key is None):
         ls = list(pending_chats)
@@ -109,6 +117,7 @@ def show_pending(message, key=None):
         mes.append(chat.query)
     mes.append("\n答\n")
     mes.extend(chat.response)
+    mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
     @is_su
     def accept(message: Message):
         nonlocal key
@@ -140,11 +149,15 @@ def response_ated(message):
         chat = get_chat(message.plain_text)
         # message.response_sync(message.plain_text)
         if(chat is not None):
-            message.response_sync(chat.response)
+            mes = chat.response
+            mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
+            message.response_sync(mes)
         else:
             chat = get_chat("没有回答")
             if(chat is not None):
-                message.response_sync(chat.response)
+                mes = chat.response
+                mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
+                message.response_sync(mes)
 @receiver
 @threading_run
 @on_exception_response
@@ -160,7 +173,10 @@ def cmd_add_custom_chat(message:CQMessage, *args, **kwargs):
     response = []
     for i in args:
         if(i == "带图"):
-            response.extend(message.get_sent_images(rettype = "file"))
+            ls = message.get_sent_images(rettype = "file", savepath = chatbot_img_path)
+            for idx, i in enumerate(ls):
+                ls[idx]=path.join("%chatbot_img_path%", path.basename(i))
+            response.extend(ls)
         else:
             texts.append(i)
     query = texts[0]
