@@ -11,6 +11,8 @@ qq2osu = jsondb(path.join(mainpth, "osu", "qq2osu"), method=lambda x:str(x)[:3])
 def osu_recent(message, *args, **kwargs):
     mode = kwargs.get("mode") or kwargs.get("m")
     osuid = kwargs.get("user") or kwargs.get("u")
+    if(kwargs.get("debug")):
+        message.response_sync(str([args, kwargs]))
     if(osuid is None):
         qqid = message.sender.id
         if(qqid in qq2osu):
@@ -30,7 +32,18 @@ def osu_recent(message, *args, **kwargs):
         if(i.startswith(score_type)):
             score_type = i
     u = user.User(osuid)
-    scores = u.get_scores(type=score_type, mode=mode)
+    print(score_type, mode)
+    try:
+        scores = u.get_scores(type=score_type, mode=mode)
+    except Exception as e:
+        message.response_sync("无法获取%s %s成绩"%(score_type, mode))
+        import sys, traceback
+        if("yaqianbot.plugins.plg_admin" in sys.modules):
+            plg_admin = sys.modules["yaqianbot.plugins.plg_admin"]
+            exc= traceback.format_exc()
+            lnk = plg_admin.link_print_exc(exc)
+            message.response_sync("输入%s查看完整"%lnk)
+        return None
     if(index > len(scores)):
         message.response_sync("没有%s成绩"%(" ".join(args), ))
         return
@@ -41,11 +54,14 @@ def osu_recent(message, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/osu", {"-set", "-m", "-mode", "-user", "-u"}, bool_opts={"-set"})
+@command("/osu", {"-set", "-m", "-mode", "-user", "-u", "-debug"}, bool_opts={"-set", "-debug"})
 def cmd_osu(message: CQMessage, *args, **kwargs):
     if(args):
         if(args[0] in "r recent b best".split()):
             return osu_recent(message, *args, **kwargs)
+    
+    if(kwargs.get("debug")):
+        message.response_sync(str([args, kwargs]))
     set_osuid = kwargs.get("set", False)
     mode = kwargs.get("mode") or kwargs.get("m")
     qqid = message.sender.id

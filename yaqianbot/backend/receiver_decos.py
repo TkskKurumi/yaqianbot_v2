@@ -6,6 +6,7 @@ import re
 from ..utils.trace import __FILE__, __FUNC__, __LINE__
 from .configure import bot_config
 from ..utils.parse_args import parse_args
+import sys, traceback
 def is_ated(func):
     @wraps(func)
     def inner(message: Message):
@@ -30,7 +31,17 @@ def on_exception_response(func):
             ret = func(message, *args, **kwargs)
             return ret
         except Exception as e:
-            message.response_sync("Error: %s"%e)
+            mes = "Error: %s"%e
+            if(len(mes)>256):
+                mes = mes[:256]+"..."
+            message.response_sync(mes)
+            if("yaqianbot.plugins.plg_admin" in sys.modules):
+                plg_admin = sys.modules["yaqianbot.plugins.plg_admin"]
+                    
+                exc = traceback.format_exc()
+                lnk = plg_admin.link_print_exc(exc)
+                # lnk = plg_admin.link_send_content(traceback.format_exc())
+                message.response_sync("输入%s查看完整"%lnk)
             raise e
     return inner
 def command(pattern, opts, bool_opts=None):

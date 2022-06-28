@@ -9,7 +9,20 @@ def link(name, func):
     nm = "/"+base32(name, 3)
     lnks[nm] = func
     return nm
-
+def link_print_exc(content):
+    def inner(message: CQMessage):
+        nonlocal content
+        if(len(content)>200):
+            cont = content[:200]+"..."
+        else:
+            cont = content
+        message.response_sync(cont)
+        if(len(content)>512):
+            cont = content[:512]+"..."
+        else:
+            cont = content
+        print(cont)
+    return link(str(content), inner)
 def link_send_content(content):
     def inner(message: CQMessage):
         nonlocal content

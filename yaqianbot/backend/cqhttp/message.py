@@ -134,7 +134,7 @@ class CQMessage(Message):
     def get_rich_array(self):
         mes = self.raw.message
         if(isinstance(mes, str)):
-            mes = mes_str2arr(mes)
+            mes = mes_str2arr(html.unescape(mes))
         ret = []
         for i in mes:
             type = i["type"]
@@ -164,7 +164,7 @@ class CQMessage(Message):
 
         mes = event.message
         if(isinstance(mes, str)):
-            mes = mes_str2arr(mes)
+            mes = mes_str2arr(html.unescape(mes))
         pics = list()
         plain_texts = []
         for i in mes:

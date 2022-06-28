@@ -244,7 +244,11 @@ def illust_score_detail(score: Dict, size=1280, style="dark"):
     try:
         cover = requests.get_image(bmset["covers"]["slimcover"])[1]
     except Exception:
-        cover = requests.get_image(bmset["covers"]["cover"])[1]
+        try:
+            cover = requests.get_image(bmset["covers"]["cover"])[1]
+        except Exception:
+            print("Cannot get cover for beatmap", bmset["covers"])
+            cover = triangles(size, size//2)
 
     # colors
     c = image_colors(cover, 1)[0]
@@ -383,7 +387,10 @@ def illust_score(score: Dict, size=1080, style="dark"):
     try:
         cover = requests.get_image(bmset["covers"]["slimcover"])[1]
     except Exception:
-        cover = requests.get_image(bmset["covers"]["cover"])[1]
+        try:
+            cover = requests.get_image(bmset["covers"]["cover"])[1]
+        except Exception:
+            cover = triangles(size, size//2)
     # colors
     colors = image_colors(cover, 3)
     c = colors[0]

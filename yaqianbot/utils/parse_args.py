@@ -6,7 +6,7 @@ def split(str):
     prev = None
     for i in str:
         if(not in_quote):
-            if(i == " "):
+            if(i == " " or i == "\n" or i == "\r"):
                 if(cur):
                     ret.append("".join(cur))
                     cur = list()
@@ -63,6 +63,6 @@ if(__name__ == "__main__"):
     print(split(r'new foo bar "hello\"azhe" -shoot'))
     options = {"-i", "--input", "-y"}
     bool_opt = {"-y"}
-    string = "   -i meow --input   meow meow -y foo bar"
+    string = " best \n-u yzhh"
     print(parse_args(string, options, bool_opt))
     # print(parse_args(r'-i "/tmp/path hase space.jpg" -y foo.jpg', boolean_args={"-y"}))
