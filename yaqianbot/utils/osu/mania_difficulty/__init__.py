@@ -12,6 +12,9 @@ from ...io import loadtext
 from ...myhash import base32
 from ..paths import pth
 from os import path
+from PIL import Image, ImageDraw, ImageFont
+from pil_functional_layout import mylocale
+IMAGE_FONT = mylocale.get_default_font()
 INF = float("inf")
 EPS = 1e-3
 JACK_ALPHA = 2.5
@@ -23,8 +26,8 @@ def mean(ls):
         return 0
     return sum(ls)/len(ls)
 
-calc_cache = dict()
 
+calc_cache = dict()
 
 
 def geometric_mean(ls, weights=None):
@@ -88,19 +91,29 @@ def lower_bound(ls, key, cmp=lambda x, key: x >= key):
 
     return le
 
+
 difficulty_cache = jsondb(path.join(pth, "mania_difficulty_cache"))
 algorithms_fingerprint = loadtext(__file__)
 algorithms_fingerprint = base32(algorithms_fingerprint)
 
+
 def weight_by_rank(ls, alpha=0.5):
-    ls = sorted(ls, key=lambda x:-x)
+    ls = sorted(ls, key=lambda x: -x)
     weight = [alpha**i for i in range(len(ls))]
     return weighted_mean(ls, weight)
+
+
 class Chart:
-    def __init__(self, notes, title, cache_key = None):
+    def __init__(self, notes, title, cache_key=None):
+        columns = set([column_x for column_x, st, ed in notes])
+        columns = sorted(list(columns))
+        columns = {i: idx for idx, i in enumerate(columns)}
+        notes = [(columns[column_x], st, ed) for column_x, st, ed in notes]
         self.notes = notes
+        self.n_col = len(columns)
         self.title = title
         self.cache_key = cache_key
+
     def get_duration(self):
         start = min(self.notes, key=lambda x: x[1])[1]
         end = max(self.notes, key=lambda x: x[2])[2]
@@ -124,32 +137,27 @@ class Chart:
         idx = lower_bound(self.notes, start, cmp=cmp)
         jdx = lower_bound(self.notes, end, cmp=cmp)
         return self.notes[idx:jdx]
-    def _calc_stream_calc_uniformity(self, multi):
-        notes = defaultdict(list)
+
+    def calc_stream_complexity(self, multi):
+        if(not multi):
+            return 0
+        col_notes = defaultdict(list)
         for k, v in multi.items():
             for note in v:
-                notes[note[0]].append(note)
-        # diversity = list()
-
-        meow = []
-        for i in notes:
-            for j in notes:
-                if(i == j):
-                    continue
-                last = None
-                last_t = None
-                ls = notes[i]+notes[j]
-                ls = sorted(ls, key=lambda x: x[1])
-                neq = 0
-                tot = len(ls)
-                for k in ls:
-                    if(k[0] != last):
-                        neq += 1
-                    last = k[0]
-                    last_t = k[1]
-                meow.append((tot-neq)/tot)
-        return mean(meow)*10
-
+                col_notes[note[0]].append(note)
+        column_score = list()
+        for col, notes in col_notes.items():
+            notes = sorted(notes)
+            intervals = []
+            for idx, i in enumerate(notes[1:]):
+                j = notes[idx]
+                interval = i[1]-j[1]
+                intervals.append(interval)
+            if(len(intervals)<3):
+                return 0
+            interval_diff = [abs(i-intervals[idx]) for idx, i in enumerate(intervals[1:])]
+            column_score.append(mean(interval_diff)/mean(intervals))
+        return mean(column_score)
     def calc_stream_partial(self, multi):
         if(not multi):
             return 0
@@ -160,12 +168,14 @@ class Chart:
         meow = sum([len(multi[i])**0.5 for i in ls])
         # meow = len(multi)
         d_stream = meow/(duration/1000)
-        d_density = self._calc_stream_calc_uniformity(multi)
-        return d_stream*((d_density/4)**0.1)/1.3/1.27/1.06
+        # d_density = self._calc_stream_calc_uniformity(multi)
+        d_meow = self.calc_stream_complexity(multi)
+        # return d_stream*((d_density/4)**0.1)/1.3/1.27/1.06
+        return d_stream*(d_meow**0.5)
 
     def calc_jumpstream_partial(self, multi):
         ls = list(multi)
-        
+
         if(not ls):
             return 0
         duration = max(ls)-min(ls)
@@ -177,7 +187,7 @@ class Chart:
 
             if(len(cols-last_cols) >= 2):
                 meow += 2
-            
+
             last_cols = cols
         single = 0
         for i in ls:
@@ -212,7 +222,7 @@ class Chart:
                     print(i)
                     print(notes[idx])
                     raise e
-            if(len(meow)<3):
+            if(len(meow) < 3):
                 return 0
             scores[interval] = weighted_mean(meow, weight)
             # meow_idx = [(idx, i) for idx, i in enumerate(meow)]
@@ -273,7 +283,7 @@ class Chart:
                 weight.append(_meow**(JACK_ALPHA+JACK_BETA))
                 # strengths.append(geometric_mean([n,n,strength]))
                 # print(int`erval)
-            if(len(meow)<3):
+            if(len(meow) < 3):
                 return 0
             scores[noteinterval] = weighted_mean(meow, weight)
         return weighted_mean([scores[1], scores[2]], [2, 1])*1.326
@@ -290,7 +300,7 @@ class Chart:
     def calc_overall_partial(self, multi):
         streamish = self.calc_streamish_partial(multi)
         jackish = self.calc_jackish_partial(multi)
-        mx, mn=max(streamish, jackish), min(streamish, jackish)
+        mx, mn = max(streamish, jackish), min(streamish, jackish)
         return mx*0.75+mn*0.25
         # st = self.calc_stream_partial(multi)
         # js = self.calc_jumpstream_partial(multi)
@@ -344,10 +354,9 @@ class Chart:
             if(len(cols-last_cols) >= 3):
                 meow += 2
             elif(len(cols-last_cols) >= 2):
-                meow+=0.5
-            
-            last_cols = cols
+                meow += 0.5
 
+            last_cols = cols
 
         single = 0
         for i in ls:
@@ -361,11 +370,12 @@ class Chart:
         return geometric_mean([d_single, d_meow], [1, 2])*1.369
 
     @classmethod
-    def from_osu_string(cls, s, dt=False, rate=1, cache_key = None):
+    def from_osu_string(cls, s, dt=False, rate=1, cache_key=None):
         pattern = r'(\d+,\d+,\d+,\d+,\d+,\d+):'
         """with open(pth, "r", encoding="utf-8") as f:
             s = f.read()"""
         notes = []
+        # columns = set()
         for idx, notestr in enumerate(re.findall(pattern, s)):
             x, y, starttime, note_type, _0, endtime = [
                 int(_) for _ in re.split('[,:]', notestr)]
@@ -379,21 +389,22 @@ class Chart:
                 starttime /= rate
                 endtime /= rate
             notes.append((column_idx, starttime, endtime))
+
         notes = sorted(notes, key=lambda x: x[1])
 
         title = re.findall(r"TitleUnicode:([\s\S]+?)[\r\n]", s)[0]
         version = re.findall(r"Version:([\s\S]+?)[\r\n]", s)[0]
         if(rate != 1):
             version += " x%.2f" % (rate, )
-        return cls(notes, title+" - "+version, cache_key = cache_key)
+        return cls(notes, title+" - "+version, cache_key=cache_key)
 
     @classmethod
     def from_osu_id(cls, id, dt=False, rate=1):
         url = "https://osu.ppy.sh/osu/%s" % id
         r = requests.get(url)
         s = r.text
-        cache_key = "beatmap(%d, dt=%s, rate=%s)"%(id, dt, rate)
-        return cls.from_osu_string(s, dt=dt, rate=rate, cache_key = cache_key)
+        cache_key = "beatmap(%d, dt=%s, rate=%s)" % (id, dt, rate)
+        return cls.from_osu_string(s, dt=dt, rate=rate, cache_key=cache_key)
 
     @classmethod
     def from_osu(cls, pth, dt=False, rate=1):
@@ -403,12 +414,12 @@ class Chart:
 
     def calc_all(self):
         if(self.cache_key is not None):
-            cache_key = "%s-%s"%(algorithms_fingerprint, self.cache_key)
+            cache_key = "%s-%s" % (algorithms_fingerprint, self.cache_key)
             if(cache_key in difficulty_cache):
-                print("cached difficulty calculation for %s"%cache_key)
+                print("cached difficulty calculation for %s" % cache_key)
                 return difficulty_cache[cache_key]
             else:
-                print("calculate difficulty for %s"%cache_key)
+                print("calculate difficulty for %s" % cache_key)
         else:
             print("no cache key")
             cache_key = None
@@ -455,10 +466,37 @@ class Chart:
 
         ret = ret_time, ret_all
         if(cache_key is not None):
-            difficulty_cache[cache_key]=ret
+            difficulty_cache[cache_key] = ret
         return ret
 
-    def plot(self, width = 1280, height=960, dpi=80, transparent=False):
+    def render(self, time, width=640, height=None, bg=(0, 0, 0, 255), fg=(255,)*4, fall_time=430):
+        if(height is None):
+            height = int(width/16*9)
+        note_w = int(width/2.3/self.n_col)
+        note_h = int(note_w*0.6)
+        end = lower_bound(self.notes, time+fall_time, cmp = lambda note, key:note[1]>key)
+        start = lower_bound(self.notes, time-fall_time, cmp = lambda note, key:note[2]>key)
+        ret = Image.new("RGBA", (width, height), bg)
+        dr = ImageDraw.Draw(ret)
+        def calc_y(tm):
+            return (time+fall_time-tm)/fall_time*height
+        def calc_x(col):
+            return width/2+(col - self.n_col/2)*note_w
+        for i in range(start, end):
+            note = self.notes[i]
+            col, st, ed = note
+            lo = calc_y(st)
+            up = min(calc_y(ed), lo-note_h)
+            le = calc_x(col)
+            ri = calc_x(col+1)
+            dr.rectangle((le, up, ri, lo),fill=fg)
+        seconds = time/1000
+        minutes = seconds//60
+        seconds = seconds%60
+        fnt = ImageFont.truetype(IMAGE_FONT, height//6)
+        dr.text((0, 0), "%d:%04.1f"%(minutes, seconds), fill=fg, font=fnt)
+        return ret
+    def plot(self, width=1280, height=960, dpi=80, transparent=False):
 
         by_time, overall = self.calc_all()
 
@@ -493,7 +531,7 @@ class Chart:
         plt.subplot(2, 2, 4)
         # for label in list(self.all_pattern_partial())+["Stamina"]:
         for label in ["Streamish", "Jackish"]:
-        # for label in ["Overall", "Stamina"]:
+            # for label in ["Overall", "Stamina"]:
             plt.plot(by_time["Time"], by_time[label], label=label)
 
         plt.legend()

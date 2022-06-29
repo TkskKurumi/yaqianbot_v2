@@ -7,6 +7,7 @@ from ..utils.pyxyv.illust import Illust, Ranking, _getRankingToday
 import re
 import random
 from datetime import timedelta
+from .plg_help import *
 last_illust = dict()
 
 
@@ -75,3 +76,5 @@ def cmd_setutime(message: CQMessage):
         return ret
     mes = [f() for i in range(20)]
     _bot.sync.send_group_forward_msg(self_id = message.raw["self_id"], messages=mes, group_id = message.raw["group_id"])
+
+plg = plugin(__name__, "PIXIV")

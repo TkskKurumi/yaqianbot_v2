@@ -518,7 +518,7 @@ def illust_user(user: User, style="dark", size=1080, mode=None):
     avatar = user.info.avatar_url
     avatar = requests.get_image(avatar)[1]
     avatar = sizefit.fix_height(avatar, avatar_size)
-    cover = requests.get_image(user.info.cover_url)[1]
+    cover = requests.get_image(user.info.cover_url)[1].convert("RGB")
 
     with print_time("illust_user - colors", enabled=False):
         # colors

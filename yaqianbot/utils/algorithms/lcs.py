@@ -21,6 +21,9 @@ def colored(st, fore=None, back=None):
     if(fore or back):
         ls.append(Color().as_terminal_rst())
     return "".join(ls)
+
+
+
 @dataclass
 class _lcs:
     A: str
@@ -33,8 +36,10 @@ class _lcs:
     a_matched: list
     b_matched: list
 
-    def calc(A, B):
+    def calc(A, B, weights = None):
         global _debug
+        if(weights is not None):
+            weights = dict()
         n = len(A)
         m = len(B)
         dp = ndarray((n, m))

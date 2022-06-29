@@ -7,6 +7,7 @@ from ..utils.trace import __FILE__, __FUNC__, __LINE__
 from .configure import bot_config
 from ..utils.parse_args import parse_args
 import sys, traceback
+from . import receiver
 def is_ated(func):
     @wraps(func)
     def inner(message: Message):
