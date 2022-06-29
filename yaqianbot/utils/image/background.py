@@ -1,10 +1,11 @@
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 from math import pi
 import numpy as np
 from typing import List
-from .colors import WHITE, Color
+from .colors import WHITE, Color, image_colors
 import math
 import random
+
 
 def np_colormap(arr, colors):
     h, w = arr.shape
@@ -36,12 +37,66 @@ def colormap(arr: np.ndarray, colors: List):
     return Image.fromarray(meow.astype(np.uint8))
 
 
+def arangexy(w, h):
+    xs = np.arange(w)
+    ys = np.arange(h)
+    idxs = np.array(np.meshgrid(ys, xs)).T.reshape(h, w, 2)
+    return idxs
+
+
+def unicorn1(w, h, width=None, colors: List = None):
+    if(colors is None):
+        tmp = "lightpink paleturquoise lightcyan"
+        colors = [Color.from_any(i) for i in tmp.split()]
+    elif(isinstance(colors, str)):
+        colors = [Color.from_any(i) for i in colors.split()]
+    if(width is None):
+        width = math.sqrt(w*w+h*h)/30
+    xs = np.arange(w)
+    ys = np.arange(h)
+    idxs = np.array(np.meshgrid(ys, xs)).T.reshape(h, w, 2)
+    weights = []
+    for i in range(len(colors)):
+        angle = random.random()*math.pi
+        mult = [math.cos(angle), math.sin(angle)]
+        weight = idxs*mult/width
+        weight = np.sum(weight, axis=-1)
+        weight = np.sin(weight)+1
+        weights.append(weight)
+    arr = np.stack(weights, axis=-1)
+    return colorvec(arr, [c.get_rgba() for c in colors])
+
+
+def colorvec1(arr: np.ndarray, colors: List, rettype = "im"):
+    h, w = arr.shape[:2]
+    ch = len(colors[0])
+    n_colors = len(colors)
+    def zeros(channels = None):
+        nonlocal h, w, ch
+        if(channels is None):
+            channels = ch
+        return np.zeros((h, w, channels), np.float32)
+    sum = zeros()
+    sumw = zeros(channels=1)
+    for i in range(n_colors):
+        weight = arr[:, :, i:i+1]
+        col = zeros()+colors[i]
+        sum += col*weight
+        sumw += weight
+    ret = sum/sumw
+    if(rettype == 'im'):
+        return Image.fromarray(ret.astype(np.uint8))
+    else:
+        return ret
+    
+
+
 def colorvec(arr: np.ndarray, colors: List):
     h, w = arr.shape[:2]
     n_ch = len(colors[0])
     n_color = len(colors)
-    color_arr = np.array(colors, np.float16)
-    ret = np.zeros((h, w, n_ch), np.float16)
+    color_arr = np.array(colors, np.float32)
+    ret = np.zeros((h, w, n_ch), np.float32)
     for y in range(h):
         for x in range(w):
             for i in range(n_color):
@@ -72,9 +127,21 @@ def grids(w, h, color_h=None, color_v=None, angle=45, gap=None):
             ret.putpixel((x, y), Color.aspil(c))
     return ret
 
+
 def random_position(w, h):
     return random.randrange(w), random.randrange(h)
-def triangles(w, h, colors, n=None, size=None, m=None, strength = 0.5):
+
+
+def frandrange(lo, hi):
+    return lo+(hi-lo)*random.random()
+
+
+def triangles(w, h, colors=None, n=None, size=None, m=None, strength=0.5, f_color=None):
+    if(colors is None):
+        if(isinstance(f_color, Image.Image)):
+            colors = image_colors(f_color, 10)
+        else:
+            colors = [Color.from_any("PINK")]
     colors = [i if isinstance(i, Color) else Color(*i) for i in colors]
     ret = Image.new("RGBA", (w, h), colors[0].get_rgba())
     if(n is None):
@@ -83,22 +150,82 @@ def triangles(w, h, colors, n=None, size=None, m=None, strength = 0.5):
         m = 10
     if(size is None):
         size = ((w*h)/n/m)**0.5
-        size = size
+        size = size*1.2
     for i in range(m):
-        layer = Image.new("RGBA", (w, h), (0,0,0,0))
+        layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
         dr = ImageDraw.Draw(layer)
         for i in range(n):
-            x, y=random_position(w, h)
-            _size = (random.random()*0.9+0.1)*size
-            _alpha = int(random.random()*strength*255)
-            _color = random.choice(colors).replace(A = _alpha)
-            if(random.random()<0.5):
-                _color=_color.lighten(random.random()**0.5)
+            x, y = random_position(w, h)
+            _size = size*frandrange(0.2, 1.8)
+            if(not f_color):
+                _alpha = int(random.random()*strength*255)
+                _color = random.choice(colors).replace(A=_alpha)
+                if(random.random() < 0.5):
+                    _color = _color.lighten(random.random()**0.5)
+                else:
+                    _color = _color.darken(random.random()**0.5)
+            elif(isinstance(f_color, Image.Image)):
+                _color = Color(*f_color.getpixel((x, y)))
+                _alpha = int(random.random()*strength*255)
+                _color = _color.replace(A=_alpha)
             else:
-                _color=_color.darken(random.random()**0.5)
-            dr.regular_polygon((x, y, size), 3, fill=_color.get_rgba())
+                _color = Color(*f_color(x, y))
+            dr.regular_polygon((x, y, _size), 3, fill=_color.get_rgba())
         ret = Image.alpha_composite(ret, layer)
     return ret
+
+
+def normalize(arr, lo, hi):
+    mn, mx = np.min(arr), np.max(arr)
+    return (arr-mn).astype(np.float32)/(mx-mn)*(hi-lo)+lo
+
+
+def random_stripe_mask(w, ratio=4, blur=2, rettype="image"):
+    arr = np.random.normal(0, 1, (w//ratio, ))
+    arr = normalize(arr, 0, 255)
+    arr = np.stack([arr]*(w//ratio))
+    im = Image.fromarray(arr.astype(np.uint8))
+    im = im.resize((w, w), Image.Resampling.NEAREST)
+    im = im.filter(ImageFilter.GaussianBlur(blur))
+    if(rettype == "image"):
+        return im
+    else:
+        return np.array(im)
+
+
+def centric_mask(w, rettype="image"):
+    arr = np.zeros((w, w), np.uint8)
+    r = (w-1)/2
+    for x in range(w):
+        for y in range(w):
+            dist = (x-r)*(x-r)+(y-r)*(y-r)
+            dist = dist**0.5
+            # y=kx+b; x=0, y=255; x=r, y=0
+            alpha = max(-dist*255/r+255, 0)
+            arr[x, y] = alpha
+    if(rettype == "image"):
+        return Image.fromarray(arr)
+    else:
+        return arr
+
+
+def random_polygon_mask(w, n=16, rnd=0.2, rettype="image"):
+    r = w/2
+    points = []
+    for i in range(n):
+        angle = 2*pi/n*i
+        _r = frandrange(rnd, 1)*r
+        x, y = r+math.cos(angle)*_r, r+math.sin(angle)*_r
+        points.append((x, y))
+    ret = Image.new("L", (w, w), 0)
+    dr = ImageDraw.Draw(ret)
+    dr.polygon(points, fill=255)
+    if(rettype == "image"):
+        return ret
+    else:
+        return np.array(ret)
+
+
 def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
     colora = colora or Color.from_any("lightpink").get_rgb()
     colorb = colorb or [253, 246, 237]
@@ -123,6 +250,12 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 
 if(__name__ == "__main__"):
-    from .print import image_show_terminal
-    im = triangles(300, 300, colors = [Color.from_any("CYAN")])
-    image_show_terminal(im)
+    # from .print import image_show_terminal
+    # im = unicorn1(100, 100, colors="RED GREEN BLUE")
+    # image_show_terminal(im)
+    w = 10
+    h = 20
+    a = arangexy(w, h)
+    for y in range(h):
+        for x in range(w):
+            print(y, x, a[y, x])

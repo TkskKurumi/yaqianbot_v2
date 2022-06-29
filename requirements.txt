@@ -1,3 +1,4 @@
 aiocqhttp
 pillow
 requests_cache
+numpy

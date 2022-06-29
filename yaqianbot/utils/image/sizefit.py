@@ -1,5 +1,5 @@
 from PIL import Image
-
+from . import colors
 
 def _wh_fit_area(w, h, area):
     rate = (area/w/h)**0.5
@@ -66,11 +66,17 @@ def fit_crop(img: Image.Image, width, height, align_x=0.5, align_y=0.5):
 
 def fit_expand(img: Image.Image, width: int, height: int, align_x: float = 0.5, align_y: float = 0.5, bg=None):
     w, h = img.size
-    if(w*height > width*h):
+    if(w*height>h*width):
+        # too wide
         rate = width/w
-        w = width
-        h = int(rate*h)
     else:
         rate = height/h
-        w = int(rate*w)
-        h = height
+    if(bg is None):
+        bg = colors.image_border_color(img).get_rgba()
+    ret = Image.new(img.mode, (width, height), bg)
+    img = resize_ratio(img, rate)
+    w, h=img.size
+    left = int((width-w)*align_x)
+    top = int((height-h)*align_y)
+    ret.paste(img, (left, top))
+    return ret

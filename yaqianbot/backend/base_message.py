@@ -3,7 +3,6 @@ from typing import Any
 from .requests import get_image
 
 
-
 @dataclass
 class User:
     id: str
@@ -18,8 +17,9 @@ class User:
 
     def __eq__(self, other):
         return (self.from_group == other.from_group) and (self.id == other.id)
+
     def get_avatar(self):
-        url = "https://q.qlogo.cn/headimg_dl?dst_uin=%s&img_type=jpg&spec=640"%self.id
+        url = "https://q.qlogo.cn/headimg_dl?dst_uin=%s&img_type=jpg&spec=640" % self.id
         return get_image(url)
 
 
@@ -35,9 +35,14 @@ class Message:
     plain_text: str = ""
     group: str = ""
     raw: Any = None
+    self_id: Any = None
+    # rich_array = None
+
+    def get_rich_array(self):
+        raise NotImplementedError()
 
     def update_rpics(self):
-        
+
         rpics[self.sender] = self.pics or rpics.get(self.sender)
         self.recent_pics = rpics[self.sender]
         return self.recent_pics
@@ -47,3 +52,7 @@ class Message:
 
     def response_sync(self, *args, **kwargs):
         raise NotImplementedError()
+
+    @property
+    def is_ated(self):
+        return self.self_id in self.ated

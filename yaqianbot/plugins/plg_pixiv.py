@@ -7,6 +7,7 @@ from ..utils.pyxyv.illust import Illust, Ranking, _getRankingToday
 import re
 import random
 from datetime import timedelta
+from .plg_help import *
 last_illust = dict()
 
 
@@ -22,10 +23,9 @@ def rand_img(message: CQMessage):
     last_illust[message.sender] = ill
     return random.choice(imgs)
 
-
 @receiver
 @threading_run
-@startswith("/pix")
+@startswith("/pix$")
 def cmd_pixiv(message: CQMessage):
     today = _getRankingToday()
     delta = abs(random.normalvariate(0, 300))
@@ -76,3 +76,5 @@ def cmd_setutime(message: CQMessage):
         return ret
     mes = [f() for i in range(20)]
     _bot.sync.send_group_forward_msg(self_id = message.raw["self_id"], messages=mes, group_id = message.raw["group_id"])
+
+plg = plugin(__name__, "PIXIV")

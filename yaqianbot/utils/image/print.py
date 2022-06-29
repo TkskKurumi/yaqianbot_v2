@@ -32,12 +32,12 @@ def colored(text, fg: Color = None, bg=None):
     return "".join(ret)
 
 
-def image_show_terminal(im, rate = 1):
+def image_show_terminal(im, rate = 1, caption=None):
     hashed = myhash.base32(np.array(im.resize((10, 10))))
     pth = path.join(tempfile.gettempdir(), "%s.png"%hashed)
     im.save(pth)
     ts = shutil.get_terminal_size()
-    w, h = ts.columns-2, ts.lines*rate-2
+    w, h = ts.columns-2, ts.lines*rate-1
     im = resize_ratio(im, rw=1, rh=0.4)
     im = fit_shrink(im, w, h).convert("RGB")
 
@@ -47,8 +47,10 @@ def image_show_terminal(im, rate = 1):
             print(colored(" ", bg=Color(*im.getpixel((x, y)))), end="")
         print()
     
-    
-    print(pth)
+    if(not caption):
+        print(pth)
+    else:
+        print(caption,":", pth)
 if(__name__ == "__main__"):
     from .print import print_colors
     from ..pyxyv import illust

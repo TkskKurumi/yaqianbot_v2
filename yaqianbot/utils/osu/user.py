@@ -71,7 +71,7 @@ class User:
 
 
 if(__name__ == "__main__"):
-    u = User("3631045")
+    u = User("[Crz]Rumia")
     # print(u.info)
     print("len_scores", len(u.get_scores()))
     pth = path.join(tempfile.gettempdir(), "userscores.json")

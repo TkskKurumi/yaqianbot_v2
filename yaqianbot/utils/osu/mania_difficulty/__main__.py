@@ -13,6 +13,9 @@ if(__name__=="__main__"):
     # c = Chart.from_osu_id(2552373) # GBC Swamp Thing
     # c = Chart.from_osu_id(3218428) # Kamiari Algorithms x1.2
     # c = Chart.from_osu_id(3496400) # Chandelier
+    # c = Chart.from_osu_id(2486497) # Connect 1986
+    # c = Chart.from_osu_id(1232332) # Disconnected Trance
+    # c = Chart.from_osu_id(429550) # M.A.M.A. MX
     ret_t, ret_all = c.calc_all()
     labels = list(ret_all)
     # for i in ["Overall", "Jackish", "Streamish"]:
