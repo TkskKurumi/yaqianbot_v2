@@ -1,16 +1,33 @@
+from ..backend.receiver_decos import on_exception_response, command
 from ..backend.cqhttp.message import prepare_message
 from ..backend import receiver, startswith
 from ..backend import threading_run
 from ..backend.cqhttp import CQMessage
 from ..backend.cqhttp import _bot
-from ..utils.pyxyv.illust import Illust, Ranking, _getRankingToday
+from ..utils.pyxyv.illust import Illust, Ranking, _getRankingToday, get_ranking
+from ..utils.pyxyv.visualize import illust_listing
 import re
 import random
 from datetime import timedelta
 from .plg_help import *
+from .plg_admin import link
 last_illust = dict()
 
-
+def show_illust(message, ill):
+    imgs = ill.get_pages(quality="regular")
+    last_illust[message.sender] = ill
+    mes = []
+    if(len(imgs)>20):
+        for i in imgs:
+            mes.append(message.contruct_forward(i))
+        message.send_forward(mes)
+    else:
+        message.response_sync(imgs)
+def link_show_illust(ill: Illust):
+    def inner(message):
+        show_illust(message, ill)
+    nm = "pixiv %s"%(ill.id)
+    return link(nm, inner)
 def rand_img(message: CQMessage):
     today = _getRankingToday()
     delta = abs(random.normalvariate(0, 300))
@@ -23,10 +40,39 @@ def rand_img(message: CQMessage):
     last_illust[message.sender] = ill
     return random.choice(imgs)
 
+
+def cmd_pixiv_rank(message, *args, **kwargs):
+    page = kwargs.get("page", 1)-1
+    st = page*20
+    ed = (page+1)*20
+
+    mode = kwargs.get("mode") or kwargs.get("m") or "weekly"
+    date = kwargs.get("date") or kwargs.get("d") or 0
+    date = int(date)
+    rnk = get_ranking(date, mode, start = st, end = ed)
+    def f_extra(ill, RT):
+        lnk = link_show_illust(ill)
+        text = "输入%s查看"%lnk
+        return RT.render(texts = [text])
+    img = illust_listing(rnk, func_extra_caption=f_extra)
+    message.response_sync(img)
+@receiver
+@threading_run
+@on_exception_response
+@command("/pixiv", opts ={"-mode", "-page", "-date", "-m", "-d"})
+def cmd_pixiv(message: CQMessage, *args, **kwargs):
+    if(args):
+        arg0 = args[0]
+        if(arg0.startswith("rank")):
+            return cmd_pixiv_rank(message, *args, **kwargs)
+    
+
+
+
 @receiver
 @threading_run
 @startswith("/pix$")
-def cmd_pixiv(message: CQMessage):
+def cmd_pixiv_(message: CQMessage):
     today = _getRankingToday()
     delta = abs(random.normalvariate(0, 300))
     delta = timedelta(days=delta)
@@ -78,3 +124,7 @@ def cmd_setutime(message: CQMessage):
     _bot.sync.send_group_forward_msg(self_id = message.raw["self_id"], messages=mes, group_id = message.raw["group_id"])
 
 plg = plugin(__name__, "PIXIV")
+func_ranking = plugin_func("/pixiv rank")
+opt_mode = plugin_func_option("-opt", "排行周期 daily/weekly/monthly")
+func_ranking.append(opt_mode)
+plg.append(func_ranking)

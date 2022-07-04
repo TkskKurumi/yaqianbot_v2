@@ -4,7 +4,7 @@ from dataclasses import dataclass
 import json
 from .executor import create_task
 from typing import List
-from datetime import datetime
+from datetime import datetime, timedelta
 from urllib.parse import urlencode
 import json
 from .paths import temppth, ensure_directory
@@ -67,7 +67,9 @@ class Illust:
 
 
 class BaseListing:
-    pass
+    def __init__(self, ids=None, items=None):
+        self.ids = ids or list()
+        self.items = items or list()
 
 
 class ListingElement:
@@ -103,10 +105,31 @@ def _getRankingToday():
     return datetime(year=int(f[:4]), month=int(f[4:6]), day=int(f[6:]))
 
 
+def get_ranking(date=None, mode="weekly", start=0, end=20):
+    ret = BaseListing()
+    pages = dict()
+
+    def get_idx(i):
+        pagen = (i//50)+1
+        remainder = i%50
+        if(pagen in pages):
+            page = pages[pagen]
+        else:
+            page = Ranking(date, mode, pagen)
+            pages[pagen] = page
+        return page.items[remainder], page.ids[remainder]
+    for i in range(start, end):
+        item, id = get_idx(i)
+        ret.items.append(item)
+        ret.ids.append(id)
+    return ret
+
 class Ranking(BaseListing):
     def __init__(self, date=None, mode="weekly", page=1):
         if(date is None):
             date = _getRankingToday()
+        elif(isinstance(date, int)):
+            date = _getRankingToday()+timedelta(days=date)
         if(isinstance(date, datetime)):
             date = date.strftime("%Y%m%d")
 
@@ -129,3 +152,10 @@ class Ranking(BaseListing):
                 id=i['illust_id'], title=i['title'], preview=i['url'])
             self.items.append(item)
             self.ids.append(i["illust_id"])
+
+
+if(__name__ == "__main__"):
+    ill = Illust(99213489)
+    print(ill.title)
+    print(ill.urls)
+    print(ill.get_pages(quality="small"))

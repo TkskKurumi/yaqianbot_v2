@@ -4,6 +4,15 @@ import sys
 from os import path
 
 
+def simple_send(messages):
+    frame = inspect.currentframe().f_back
+    # print(frame.f_locals)
+    message = frame.f_locals["message"]
+    ret = message.response_sync(messages)
+    del frame
+    return ret
+
+
 class print_time:
     def __init__(self, name, enabled=True):
         self.name = name
@@ -43,6 +52,7 @@ class __LINE__(object):
             for i in range(self.n):
                 frame = frame.f_back
             return str(frame.f_lineno)
+
     def __int__(self):
         try:
             raise Exception

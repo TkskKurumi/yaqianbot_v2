@@ -49,10 +49,11 @@ def threading_run(f):
                 return ret
             except Exception as e:
                 traceback.print_exc()
+                raise e
         @wraps(func)
         def inner(*args, **kwargs):
             pending_cnt[taskname] += 1
-            pool.submit(_inner, *args, **kwargs)
+            return pool.submit(_inner, *args, **kwargs)
         return inner
     if(isinstance(f, str)):
         return deco
@@ -70,18 +71,16 @@ if(__name__ == "__main__"):
     def f():
         print("f")
         time.sleep(1)
-        return
+        return "foo"
 
     @threading_run("custom task name")
     def ff():
         print("ff")
         time.sleep(2)
-        return
+        return "bar"
+    tasks = []
     for i in range(3):
-        f()
-        ff()
-    while(True):
-        time.sleep(0.5)
-        print(task_timer)
-        if(sum([v for k,v in pending_cnt.items()]) + sum([v for k,v in running_cnt.items()]) == 0):
-            break
+        tasks.append(f())
+        tasks.append(ff())
+    for i in tasks:
+        print(i.result())

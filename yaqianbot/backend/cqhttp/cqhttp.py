@@ -8,13 +8,16 @@ import traceback
 from ..configure import bot_config
 from .message import CQMessage, CQUser
 receivers = {}
+poke_receivers = {}
 _backend_type = "cqhttp"
 
 
 def receiver(func):
     receivers[func.__name__] = func
     return func
-
+def poke_receiver(func):
+    poke_receivers[func.__name__] = func
+    return func
 async def message_receiver(event: Event):
     print("received", event.raw_message)
     mes = CQMessage.from_cq(event)
@@ -23,7 +26,14 @@ async def message_receiver(event: Event):
         ret = func(mes)
         if(inspect.isawaitable(ret)):
             await ret
-
+async def _poke_receiver(event: Event):
+    print("received poke", event)
+    mes = await CQMessage.from_cqpoke(event)
+    print("received poke meow", event)
+    for name, func in poke_receivers.items():
+        ret = func(mes)
+        if(inspect.isawaitable(ret)):
+            await ret
 
 async def debugger(event):
 
@@ -37,6 +47,7 @@ async def debugger(event):
         print(event)
 _bot = CQHttp()
 _bot.on_message(message_receiver)
+_bot.on("notice.notify.poke")(_poke_receiver)
 if(bot_config.get("DEBUG", "false").lower() == "true"):
     print("debug")
     _bot.on_message(debugger)

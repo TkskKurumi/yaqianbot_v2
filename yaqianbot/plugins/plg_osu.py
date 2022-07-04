@@ -5,6 +5,7 @@ from ..backend.cqhttp import CQMessage
 from os import path
 from ..utils.jsondb import jsondb
 from ..utils import np_misc
+from ..utils.algorithms.lcs import lcs
 from ..utils.osu.mania_difficulty import Chart as ManiaChart
 # from ..utils.tetrio import User, Illust
 from ..utils.osu import user, illust
@@ -27,19 +28,67 @@ def mania_gif(score, t=None, duration=10):
         overall = bytime["Overall"]
         overalls = sorted(list(enumerate(overall)), key=lambda x: x[1])
         n = len(overalls)
-        idx = overalls[int(n*0.9)][0]
+        idx = overalls[int(n*0.95)][0]
         t = times[idx]
     tm = t
     frames = []
-    fps = 24
+    fps = 20
     while(tm < t+duration):
         frm = chart.render(tm*1000, width=300)
-        frames.append(np.array(frm))
+        frames.append(frm)
+        # frames.append(np.array(frm))
         tm += 1/fps
     # frames = np_misc.smooth_frames(frames, padding="same", alpha = 0.33)
-    frames = [Image.fromarray(i) for i in frames]
+    # frames = [Image.fromarray(i) for i in frames]
     gif = make_gif(frames, frame_area_sum=5e6)
     return gif
+
+
+def osu_bm(message, *args, **kwargs):
+    # mode = kwargs.get("mode") or kwargs.get("m")
+    osuid = kwargs.get("user") or kwargs.get("u")
+    if(kwargs.get("debug")):
+        message.response_sync(str([args, kwargs]))
+    if(osuid is None):
+        qqid = message.sender.id
+        if(qqid in qq2osu):
+            osuid = qq2osu[qqid]
+        else:
+            message.response_sync("请用-user/-u选项指定要查询的用户名喵")
+            return
+    score_type = args[0].lower()  # should be bm/beatmap/bid
+    assert score_type in "bid beatmap".split()
+    u = user.User(osuid)
+    bid = args[1]
+    if(not bid.isnumeric()):
+        bid = " ".join(args[1:])
+        scores = u.get_scores("best")+u.get_scores("recent")
+        ls = []
+        for score in scores:
+            bm = score["beatmap"]
+            bmset = score["beatmapset"]
+            meow0 = bmset["title"]+bm['version']
+            meow1 = bmset["title_unicode"]+bm['version']
+            lcs0 = lcs(bid, meow0)
+            lcs1 = lcs(bid, meow1)
+            common = max(lcs0.common_ratio_a, lcs1.common_ratio_a)
+            
+            ls.append((common, score))
+        score = max(ls, key=lambda x:x[0])[1]
+    else:
+        score = u.get_beatmap_score(bid)
+        if("error" in score):
+            message.response_sync("无法获取分数")
+            return
+        score = score["score"]
+
+    # score = score["score"]
+    im = illust.illust_score_detail(score)
+    message.response_sync(im)
+    bm = score["beatmap"]
+    if(bm["mode"] == "mania"):
+        gif = mania_gif(score)
+        message.response_sync(gif)
 
 
 def osu_recent(message, *args, **kwargs):
@@ -100,7 +149,8 @@ def cmd_osu(message: CQMessage, *args, **kwargs):
     if(args):
         if(args[0] in "r recent b best".split()):
             return osu_recent(message, *args, **kwargs)
-
+        elif(args[0] in "bid beatmap".split()):
+            return osu_bm(message, *args, **kwargs)
     if(kwargs.get("debug")):
         message.response_sync(str([args, kwargs]))
     set_osuid = kwargs.get("set", False)
@@ -125,12 +175,16 @@ def cmd_osu(message: CQMessage, *args, **kwargs):
 
 
 plg = plugin(__name__, "OSU")
-opt_mode = plugin_func_option("-m或-mode", "指定模式(osu/mania/taiko/fruits)")
+opt_mode = plugin_func_option(
+    "-m或-mode", "指定模式(osu/mania/taiko/fruits)", arg_desc="模式名")
 func_osu = plugin_func("/osu [id]或best或recent")
-func_osu.append(plugin_func_option("-set", "更新OSU!id", OPT_NOARGS))
+func_osu.append(plugin_func_option("-set", "更新OSU!id", type=OPT_NOARGS))
 func_osu.append(opt_mode)
 func_osu_recent = plugin_func("/osu recent或best [序号]或默认序号“1”")
-func_osu_recent.append(plugin_func_option("-u", "指定用户"))
+func_osu_recent.append(plugin_func_option("-u", "指定用户", arg_desc="用户名"))
 func_osu_recent.append(opt_mode)
+func_osu_bid = plugin_func("/osu bid或beatmap [beatmap id]")
+func_osu_bid.append(plugin_func_option("-u", "指定用户", arg_desc="用户名"))
 plg.append(func_osu)
 plg.append(func_osu_recent)
+plg.append(func_osu_bid)

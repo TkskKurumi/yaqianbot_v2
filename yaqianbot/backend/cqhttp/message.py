@@ -131,6 +131,27 @@ class CQUser(User):
 
 
 class CQMessage(Message):
+    def construct_forward(self, message, uin=None, name=None):
+        if(uin is None):
+            uin = self.raw["self_id"]
+        if(name is None):
+            _ = cqhttp._bot.sync.get_login_info(self_id=self.raw["self_id"])
+            name = _.get("nickname", "菜菜")
+        data = dict()
+        data["uin"] = uin
+        data["name"] = name
+        data["content"] = prepare_message(message)
+        return {"type": "node", "data": data}
+    def send_forward_message(self, messages):
+        raw = self.raw
+        kwargs = {}
+        kwargs["self_id"] = raw["self_id"]
+        if("group_id" in raw):
+            kwargs["group_id"] = raw["group_id"]
+        else:
+            raise Exception("only supports send_foward_message for group")
+        kwargs["messages"] = messages
+        return cqhttp._bot.sync.send_group_forward_msg(**kwargs)
     def get_rich_array(self):
         mes = self.raw.message
         if(isinstance(mes, str)):
@@ -149,10 +170,20 @@ class CQMessage(Message):
                 ret.append(im)
         return ret
         # return super().get_rich_array()
+    @classmethod
+    async def from_cqpoke(cls, event):
+        user_id = event["user_id"]
+        self_id = event["self_id"]
+        user_info = await cqhttp._bot.get_stranger_info(self_id = self_id, user_id = user_id)
+        from_group = event.get("group_id", "private")
+        sender = User(str(user_id), user_info.get("nickname", "Unknown User"), from_group)
+        raw = event
+        self_id = str(self_id)
+        return cls(raw = raw, self_id = self_id, sender = sender)
 
     @classmethod
     def from_cq(cls, event):
-        
+
         ated = list()
         self_id = str(event.get("self_id"))
         if("group_id" in event):
@@ -212,6 +243,11 @@ class CQMessage(Message):
         for key in ["message_type", "group_id", "user_id", "self_id"]:
             if(key in self.raw):
                 args[key] = self.raw[key]
+        if("message_type" not in args):
+            if(self.sender.from_group == "private"):
+                args["message_type"] = "private"
+            else:
+                args["message_type"] = "group"
         prepare(message=prepare_message(message))
         # print(args)
         ret = cqhttp._bot.sync.send_msg(**args)

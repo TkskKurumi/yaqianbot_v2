@@ -7,5 +7,6 @@ from .paths import temppth, cachepth, mainpth
 # qq backend
 if(bot_config.get("BACKEND", "cqhttp") == "cqhttp"):
     from .cqhttp.cqhttp import *
+    from .cqhttp.cqhttp import _backend_type
     from .cqhttp import cqhttp as backend
     

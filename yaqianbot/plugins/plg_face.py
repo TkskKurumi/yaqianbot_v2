@@ -227,7 +227,12 @@ hanzi2color = {
     "红": "RED",
     "蓝": "BLUE",
     "粉": "PINK",
-    "千千": "rgb(255,153,164)"
+    "千千": "rgb(255,153,164)",
+    "绿": "GREEN",
+    "橙": "ORANGE",
+    "黄": "YELLOW",
+    "透明":"rgba(0,0,0,0)",
+    "MIKU":"rgb(57, 197, 187)"
 }
 match_hanzi_color = "|".join(hanzi2color)
 
