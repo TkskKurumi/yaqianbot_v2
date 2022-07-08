@@ -73,7 +73,7 @@ class plugin:
             friendly_name = name
         self.friendly_name = friendly_name
         self.funcs = []
-        plugins[self.friendly_name] = self
+        plugins[self.friendly_name.lower()] = self
 
     def append(self, x):
         self.funcs.append(x)

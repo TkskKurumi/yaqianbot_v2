@@ -344,8 +344,23 @@ def cmd_cloud(message, *args, **kwargs):
     imgtype, img = message.get_sent_images()[0]
     ret = img_filter(imgtype, img, f)
     message.response_sync(ret)
-
-
+@receiver
+@threading_run
+@on_exception_response
+@command("/网格", opts = {})
+def cmd_grids(message, *args, **kwargs):
+    if(args and args[0].isnumeric()):
+        n = int(args[0])
+        n = max(4, min(12, n))
+    else:
+        n = 4
+    imgtype, img = message.get_sent_images()[0]
+    img = img.convert("RGB")
+    imcolors = colors.image_colors(img, n)
+    colors1 = imcolors[:n//2]
+    colors2 = imcolors[n//2:]
+    img = background.grids1(*img.size, colors1, colors2)
+    message.response_sync(img)
 @receiver
 @threading_run
 @on_exception_response
