@@ -4,16 +4,21 @@ from concurrent.futures import ThreadPoolExecutor
 from ..bot_threading import threading_run
 import asyncio
 import inspect
-import traceback
+import traceback, time
+import schedule
 from ..configure import bot_config
 from .message import CQMessage, CQUser
 receivers = {}
 poke_receivers = {}
+scheduled_jobs = {}
 _backend_type = "cqhttp"
 
 
 def receiver(func):
     receivers[func.__name__] = func
+    return func
+def scheduled(func):
+    scheduled_jobs[func.__name__]=func
     return func
 def poke_receiver(func):
     poke_receivers[func.__name__] = func
@@ -53,13 +58,26 @@ if(bot_config.get("DEBUG", "false").lower() == "true"):
     _bot.on_message(debugger)
 else:
     print("debug:", bot_config.get("DEBUG", "false"))
-
-
+_is_running = False
+def bot_is_running():
+    global _is_running
+    return _is_running
+@threading_run
+def timer():
+    while(bot_is_running()):
+        # time.sleep(10)
+        # schedule.run_pending()
+        print("Timer 30 seconds")
+        time.sleep(30)
 def run(host="127.0.0.1", port=8008):
+    global _is_running
     print("run at", bot_config)
     # loop = asyncio.new_event_loop()
     # loop.create_task(_bot.run_task(host=host, port=port))
     # loop.run_forever()
+    _is_running = True
+    timer()
     asyncio.run(_bot.run_task(host=host, port=port))
     print("meow")
+    _is_running = False
     return None

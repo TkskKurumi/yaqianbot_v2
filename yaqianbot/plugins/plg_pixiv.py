@@ -11,10 +11,21 @@ import random
 from datetime import timedelta
 from .plg_help import *
 from .plg_admin import link
+from ..utils.candy import simple_send
+import numpy as np
+from PIL import Image
+from ..utils.make_gif import make_gif
+from ..utils.image import hytk
 last_illust = dict()
+
+def make_safe(image):
+    image1 = Image.open(rand_img())
+    return hytk.hytk(image, image1)
 
 def show_illust(message, ill):
     imgs = ill.get_pages(quality="regular")
+    if(not ill.is_safe):
+        imgs = [make_safe(Image.open(i)) for i in imgs]
     last_illust[message.sender] = ill
     mes = []
     if(len(imgs)>20):
@@ -28,7 +39,7 @@ def link_show_illust(ill: Illust):
         show_illust(message, ill)
     nm = "pixiv %s"%(ill.id)
     return link(nm, inner)
-def rand_img(message: CQMessage):
+def rand_img(message: CQMessage=None):
     today = _getRankingToday()
     delta = abs(random.normalvariate(0, 300))
     delta = timedelta(days=delta)
@@ -37,7 +48,8 @@ def rand_img(message: CQMessage):
     id = random.choice(ranking.ids)
     ill = Illust(id)
     imgs = ill.get_pages(quality="regular")
-    last_illust[message.sender] = ill
+    if(message):
+        last_illust[message.sender] = ill
     return random.choice(imgs)
 
 
@@ -56,6 +68,17 @@ def cmd_pixiv_rank(message, *args, **kwargs):
         return RT.render(texts = [text])
     img = illust_listing(rnk, func_extra_caption=f_extra)
     message.response_sync(img)
+
+# @receiver
+@threading_run
+@on_exception_response
+def cmd_pixiv_view(message: CQMessage, *args, **kwargs):
+    if(not args):
+        simple_send("请给出pixiv id")
+    else:
+        id = args[0]
+        ill = Illust(id)
+        show_illust(message, ill)
 @receiver
 @threading_run
 @on_exception_response
@@ -65,7 +88,10 @@ def cmd_pixiv(message: CQMessage, *args, **kwargs):
         arg0 = args[0]
         if(arg0.startswith("rank")):
             return cmd_pixiv_rank(message, *args, **kwargs)
-    
+        elif(arg0.startswith("v")):
+            return cmd_pixiv_view(message, *args[1:], **kwargs)
+            
+
 
 
 

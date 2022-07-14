@@ -131,6 +131,11 @@ class CQUser(User):
 
 
 class CQMessage(Message):
+    def asdict(self):
+        return self.raw
+    @classmethod
+    def fromdict(cls, d):
+        return cls.from_cq(d)
     def construct_forward(self, message, uin=None, name=None):
         if(uin is None):
             uin = self.raw["self_id"]

@@ -23,7 +23,7 @@ from ..utils.algorithms.kdt import point as KDTPoint
 from ..backend.requests import get_image
 from ..utils.image import sizefit
 from ..utils.image.colors import Color
-
+import math
 
 '''
 @receiver
@@ -231,8 +231,8 @@ hanzi2color = {
     "绿": "GREEN",
     "橙": "ORANGE",
     "黄": "YELLOW",
-    "透明":"rgba(0,0,0,0)",
-    "MIKU":"rgb(57, 197, 187)"
+    "透明": "rgba(0,0,0,0)",
+    "MIKU": "rgb(57, 197, 187)"
 }
 match_hanzi_color = "|".join(hanzi2color)
 
@@ -311,8 +311,9 @@ def cmd_cloud(message, *args, **kwargs):
 
     border_color = None
     bluesky = None
+
     def f(img):
-        nonlocal border_color, bluesky        
+        nonlocal border_color, bluesky
         from ..utils.candy import log_header
         img = img.convert("RGB")
         arr = np.array(img)
@@ -322,11 +323,12 @@ def cmd_cloud(message, *args, **kwargs):
         if(bluesky is None):
             xys = background.arangexy(w, h)
             print(log_header(), "xys", xys.shape)
-            weight_y0 = xys[:,:,0]
+            weight_y0 = xys[:, :, 0]
             weight_y1 = h-weight_y0
-            _arr = np.stack([weight_y0, weight_y1],axis=-1)
+            _arr = np.stack([weight_y0, weight_y1], axis=-1)
             print(log_header(), "_arr", _arr.shape)
-            bluesky = background.colorvec1(_arr, [(121, 191, 246), (9, 71, 152)])
+            bluesky = background.colorvec1(
+                _arr, [(121, 191, 246), (9, 71, 152)])
             print(log_header(), "blue sky", bluesky.size)
         diff = np_misc.vecs_l2dist(arr, border_color, keepdims=False)  # h x w
         # print(log_header(), diff.shape)
@@ -344,10 +346,89 @@ def cmd_cloud(message, *args, **kwargs):
     imgtype, img = message.get_sent_images()[0]
     ret = img_filter(imgtype, img, f)
     message.response_sync(ret)
+
+
 @receiver
 @threading_run
 @on_exception_response
-@command("/网格", opts = {})
+@command("/格子裙|/格子|/格裙", opts={"-h", "-hshift"})
+def cmd_gridskirt(message, *args, **kwargs):
+    imgtype, img = message.get_sent_images()[0]
+    img = img.convert("RGB")
+    size = 1280, 720
+    w, h = size
+    scale = ((w*w+h*h)**0.5)/80
+    scale_big = scale*4
+    scale_small = scale
+    sin45 = math.sin(math.pi/4)
+    freq_thread = scale_big*1.23
+    scale_thread = freq_thread*0.08
+    n_colors = 9
+    cs = colors.image_colors(img, n_colors)
+    if(kwargs.get("h") or kwargs.get("hshift")):
+        hshift =int(kwargs.get("h") or kwargs.get("hshift"))
+        _cs = []
+        for i in cs:
+            hue,s,l=i.get_hsl()
+            hue = (hue+hshift)%360
+            _cs.append(colors.Color.from_hsl(hue,s,l))
+        cs = _cs
+    #colors_big_w = colors[:3]
+    #colors_big_H = colors[3:6]
+    #colors_small = colors[6:10]
+    #color_thread = colors[10]
+    xys = background.arangexy(*size)
+    xs = xys[:, :, 1]
+    ys = xys[:, :, 0]
+    byx = xs.astype(np.float64)
+    byy = ys.astype(np.float64)
+
+    def grid_by_angle(scale, angle, k):
+        _cos = math.cos(angle/180*math.pi)
+        _sin = math.sin(angle/180*math.pi)
+        ret = (byx*_cos+byy*_sin)/scale
+        return (ret % k).astype(np.uint16)
+
+
+    eye = np.eye(n_colors)
+
+    eye_big_h = eye[grid_by_angle(scale_big, 0, 2)]
+    eye_big_w = eye[grid_by_angle(scale_big, 90, 2)+2]
+
+    # mask_small_w0 = byx%scale_small < (scale_small*0.1)
+    # mask_small_w1 = ((byx+0.3*scale_small)%scale_small) < (scale_small*0.1)
+    # mask = (mask_small_w0+mask_small_w1).reshape((h, w, 1))
+    idx_small_w = grid_by_angle(scale_small, 0, 4)
+    eye_small_w = eye[idx_small_w+4]  # *mask
+
+    # mask_small_h0 = byy%scale_small < (scale_small*0.1)
+    # mask_small_h1 = ((byy+0.3*scale_small)%scale_small) < (scale_small*0.1)
+    # mask = (mask_small_h0+mask_small_h1).reshape((h, w, 1))
+    idx_small_h = grid_by_angle(scale_small, 90, 4)
+    eye_small_h = eye[idx_small_h+4]  # *mask
+
+    mask_thread0 = (byy % freq_thread) < (freq_thread*0.08)
+    mask_thread1 = (byx*sin45+byy*sin45) % scale_thread < (scale_thread*0.12)
+    mask_thread = (mask_thread0 & mask_thread1).reshape((h, w, 1))
+    eye_thread = [i == n_colors-1 for i in range(n_colors)]
+    eye_thread = (np.zeros((h, w, n_colors))+eye_thread)*mask_thread
+
+    alpha = 1.5
+    arr = (eye_big_h+eye_big_w)*math.exp(alpha*1) +\
+        (eye_small_w+eye_small_h)*math.exp(alpha*0) +\
+        eye_thread*math.exp(alpha*1)
+    img = background.colorvec1(arr, [tuple(i) for i in cs])
+    message.response_sync(img)
+    # img = Image.new("RGBA", (1, n_colors))
+    # for i in range(n_colors):
+    #     img.putpixel((0, i), cs[i].get_rgb())
+    # message.response_sync(img.resize((233, 233), Image.Resampling.NEAREST))
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/网格", opts={})
 def cmd_grids(message, *args, **kwargs):
     if(args and args[0].isnumeric()):
         n = int(args[0])
@@ -361,6 +442,8 @@ def cmd_grids(message, *args, **kwargs):
     colors2 = imcolors[n//2:]
     img = background.grids1(*img.size, colors1, colors2)
     message.response_sync(img)
+
+
 @receiver
 @threading_run
 @on_exception_response

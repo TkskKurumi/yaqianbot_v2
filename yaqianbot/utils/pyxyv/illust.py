@@ -45,7 +45,16 @@ class Illust:
         self.author = j['userName']
         self.author_id = j['userId']
         self.page_count = j["pageCount"]
-
+        plain_tags = [i['tag'] for i in j["tags"]['tags']]
+        self.plain_tags = plain_tags
+        self.raw = j
+    @property
+    def is_safe(self):
+        if("R-18" in self.plain_tags):
+            return False
+        if("R-18G" in self.plain_tags):
+            return False
+        return True
     def __repr__(self):
         return '<Pixiv Illust title="%s", author="%s", id=%s>' % (self.title, self.author, self.id)
 
@@ -111,7 +120,7 @@ def get_ranking(date=None, mode="weekly", start=0, end=20):
 
     def get_idx(i):
         pagen = (i//50)+1
-        remainder = i%50
+        remainder = i % 50
         if(pagen in pages):
             page = pages[pagen]
         else:
@@ -123,6 +132,7 @@ def get_ranking(date=None, mode="weekly", start=0, end=20):
         ret.items.append(item)
         ret.ids.append(id)
     return ret
+
 
 class Ranking(BaseListing):
     def __init__(self, date=None, mode="weekly", page=1):
@@ -155,7 +165,11 @@ class Ranking(BaseListing):
 
 
 if(__name__ == "__main__"):
-    ill = Illust(99213489)
+    ill = Illust(99389974)
     print(ill.title)
     print(ill.urls)
     print(ill.get_pages(quality="small"))
+    print(ill.plain_tags)
+    from ..io import savejson
+    savejson("/tmp/tmp.json", ill.raw)
+    print("/tmp/tmp.json")
