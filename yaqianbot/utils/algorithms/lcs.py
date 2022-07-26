@@ -1,4 +1,5 @@
 from dataclasses import dataclass, asdict
+from re import S
 from ..image.colors import Color
 def ndarray(dims, fill=0):
     if(len(dims) == 1):
@@ -35,7 +36,69 @@ class _lcs:
     common_len: int
     a_matched: list
     b_matched: list
-
+    def calc1(A, B):
+        sa = set(A)
+        sb = set(B)
+        a_matched = ndarray((len(A),), False)
+        b_matched = ndarray((len(B),), False)
+        simple_a = list()
+        simple_b = list()
+        for idx, i in enumerate(A):
+            if(i in sb):
+                simple_a.append((idx, i))
+        for idx, i in enumerate(B):
+            if(i in sa):
+                simple_b.append((idx, i))
+        n = len(simple_a)
+        m = len(simple_b)
+        dp = ndarray((n, m), 0)
+        dp_from = ndarray((n, m), (-1, -1))
+        for i, a in enumerate(simple_a):
+            for j, b in enumerate(simple_b):
+                _dp = 0
+                _from = (-1, -1)
+                sim = element_similarity(a[1], b[1])
+                if(sim):
+                    __dp = (dp[i-1][j-1] if (i and j) else 0)+sim
+                    __from = i-1, j-1
+                    if(__dp>_dp):
+                        _dp = __dp
+                        _from = __from
+                if(i):
+                    __dp = dp[i-1][j]
+                    __from = (i-1, j)
+                    if(__dp>_dp):
+                        _dp = __dp
+                        _from = __from
+                if(j):
+                    __dp = dp[i][j-1]
+                    __from = (i, j-1)
+                    if(__dp>_dp):
+                        _dp = __dp
+                        _from = __from
+                dp[i][j]=_dp
+                dp_from[i][j]=_from
+        
+        common = []
+        u, v = n-1, m-1
+        while(u!=-1 and v!=-1):
+            u1, v1 = dp_from[u][v]
+            if(u1 == u-1 and v1 == v-1):
+                adx, a = simple_a[u]
+                bdx, b = simple_b[v]
+                a_matched[adx]=True
+                b_matched[bdx]=True
+                common.append(a)
+            u,v = u1, v1
+        # print(dp)
+        if(n and m):
+            common_len = dp[n-1][m-1]
+        else:
+            common_len = 0
+        common_ratio_a = common_len/len(A)
+        common_ratio_b = common_len/len(B)
+        common_ratio = common_ratio_a*common_ratio_b
+        return _lcs(A, B, common[::-1], common_ratio_a, common_ratio_b, common_ratio, common_len, a_matched, b_matched)
     def calc(A, B, weights = None):
         global _debug
         if(weights is not None):
@@ -46,7 +109,12 @@ class _lcs:
         a_matched = ndarray((n,), False)
         b_matched = ndarray((m,), False)
         dp_from = ndarray((n, m), (-1, -1))
+        sb = set(B)
         for i in range(n):
+            if(i and (A[i] not in sb)):
+                dp[i]=dp[i-1]
+                dp_from[i]=dp_from[i-1]
+                continue
             for j in range(m):
                 '''if(A[i] in 'Aa' and B[j] in 'Aa' and A[i]!=B[j]):
                     print(A[i],B[j],A[i].lower() == B[j].lower())'''
@@ -75,8 +143,9 @@ class _lcs:
         u, v = n-1, m-1
         common = []
         while(u >= 0 and v >= 0):
-
+            
             u1, v1 = dp_from[u][v]
+            # print(u, v, u1, v1)
             ''' if(_debug):
                 print(u, v, 'from', u1, v1) '''
             if(u1 == u-1 and v1 == v-1):
@@ -135,7 +204,7 @@ class _lcs:
 
 def lcs(A, B):
     
-    return _lcs.calc(A, B)
+    return _lcs.calc1(A, B)
 if(__name__=="__main__"):
     A = "被戳的反应"
     B = "被戳戳嗯喵咩"

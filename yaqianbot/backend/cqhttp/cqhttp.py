@@ -67,8 +67,10 @@ def timer():
     while(bot_is_running()):
         # time.sleep(10)
         # schedule.run_pending()
-        print("Timer 30 seconds")
-        time.sleep(30)
+        time.sleep(20)
+        print("Timer 20 seconds")
+        for k, v in scheduled_jobs.items():
+            v()
 def run(host="127.0.0.1", port=8008):
     global _is_running
     print("run at", bot_config)
