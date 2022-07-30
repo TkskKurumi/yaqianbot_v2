@@ -39,12 +39,12 @@ def cmd_bangumi_search(message: Message, *args, **kwargs):
     start_search = time.time()
     last_report = time.time()
     
-    def progress_report(idx, n):
+    def progress_report(idx, n, start_time):
         nonlocal start_search, message, last_report, time_split
         if(idx%50 == 0):
             tm = time.time()
             if(tm>last_report+time_split):
-                elapsed = tm-start_search
+                elapsed = tm-start_time
                 remain = elapsed/(idx+1)*(n-idx)
                 simple_send("正在搜索%d/%d, 预计剩余%.1f秒"%(idx, n, remain))
                 last_report = tm

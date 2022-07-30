@@ -9,7 +9,7 @@ from ..utils.algorithms.lcs import lcs
 from ..utils.osu.mania_difficulty import Chart as ManiaChart
 # from ..utils.tetrio import User, Illust
 from ..utils.osu import user, illust
-from ..utils.make_gif import make_gif
+from ..utils.make_gif import make_gif, make_mp4
 import numpy as np
 from PIL import Image
 from .plg_help import *
@@ -32,15 +32,12 @@ def mania_gif(score, t=None, duration=10):
         t = times[idx]
     tm = t
     frames = []
-    fps = 20
-    while(tm < t+duration):
-        frm = chart.render(tm*1000, width=300)
+    fps = 24
+    for i in range(duration*fps):
+        tmm = tm+i/fps
+        frm = chart.render(tmm*1000, width=300)
         frames.append(frm)
-        # frames.append(np.array(frm))
-        tm += 1/fps
-    # frames = np_misc.smooth_frames(frames, padding="same", alpha = 0.33)
-    # frames = [Image.fromarray(i) for i in frames]
-    gif = make_gif(frames, frame_area_sum=5e6)
+    gif = make_gif(frames, fps=fps, frame_area_sum = 1e7) #, frame_area_sum=5e6)
     return gif
 
 

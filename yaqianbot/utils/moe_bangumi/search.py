@@ -13,7 +13,7 @@ def search(title, progress_call_back=None):
     n = len(itm)
     for idx, i in enumerate(itm):
         if(callable(progress_call_back)):
-            progress_call_back(idx, n)
+            progress_call_back(idx, n, start)
         k, v = i
         v = Torrent(v)
         lcs = LCS(title, v.title)

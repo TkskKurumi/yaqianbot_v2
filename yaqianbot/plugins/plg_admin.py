@@ -3,37 +3,39 @@ from ..backend import base_message as Message
 from ..backend.receiver_decos import *
 from ..utils import after_match
 from ..utils.myhash import base32
+from pil_functional_layout.widgets import RichText
 lnks = dict()
+
 
 def link(name, func):
     nm = "/"+base32(name, 3)
     lnks[nm] = func
     return nm
+
+
 def link_print_exc(content):
     def inner(message: CQMessage):
         nonlocal content
-        if(len(content)>200):
-            cont = content[:200]+"..."
-        else:
-            cont = content
-        message.response_sync(cont)
-        if(len(content)>512):
-            cont = content[:512]+"..."
-        else:
-            cont = content
-        print(cont)
+        RT = RichText([content], width=512, fontSize=14, fill=(
+            0, 0, 0, 255), bg=(255,)*4, autoSplit=False)
+        message.response_async(RT.render())
     return link(str(content), inner)
+
+
 def link_send_content(content):
     def inner(message: CQMessage):
         nonlocal content
         message.response_sync(content)
     return link(str(content), inner)
+
+
 @receiver
 @threading_run
 def cmd_handle_lnk(message: Message):
     if(message.plain_text in lnks):
         lnks[message.plain_text](message)
-    
+
+
 @receiver
 @threading_run
 @startswith("/exec")

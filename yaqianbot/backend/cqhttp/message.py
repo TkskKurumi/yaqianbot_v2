@@ -5,16 +5,18 @@ import re
 from aiocqhttp.message import MessageSegment as MSEG
 from ..bot_threading import threading_run
 from ..base_message import User, Message
+import requests as _requests
 from .. import requests
 from ...utils.candy import print_time, log_header
 from . import cqhttp
 from os import path
 from PIL import Image
 from math import sqrt
-from ..paths import temppth
+from ..paths import temppth, mainpth
 import base64
 from io import BytesIO
-
+import shutil
+from ..configure import bot_config
 
 def img_b64(im, limit_size=1e6):
 
@@ -63,8 +65,19 @@ def img_file_b64(filename, limit_size=(2 << 20)):
         return ret
     else:
         return img_b64(im, limit_size)
-
-
+def file_b64(filename):
+    with open(filename, "rb") as f:
+        ret = f.read()
+    ret = base64.b64encode(ret).decode("ascii")
+    return ret
+def mp4_b64(filename):
+    return file_b64(filename)
+http_host = bot_config.get("HTTP_FILE_ADDR", "http://cloud.caicai.pet:8010")
+def http_file(filename):
+    dst = shutil.copy(filename, path.join(mainpth, "httpserver"))
+    ret = "/".join([http_host, path.basename(dst)])
+    print(_requests.head(ret))
+    return ret
 def prepare_message(mes):
     if(not isinstance(mes, list)):
         mes = [mes]
@@ -78,8 +91,13 @@ def prepare_message(mes):
                     mes = MSEG.image(file)
                     ret.append(mes)
                 elif(ext in [".wav", ".mp3", ".ogg"]):
-                    mes = MSEG.record(i)
+                    file = "base64://"+file_b64(i)
+                    mes = MSEG.record(file)
                     ret.append(mes)
+                # elif(ext in [".mp4"]):
+                #     f = http_file(i)
+                #     mes = MSEG.video(f)
+                #     ret.append(mes)
                 else:
                     ret.append(MSEG.text(i))
             else:
