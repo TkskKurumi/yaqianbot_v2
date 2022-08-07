@@ -258,12 +258,10 @@ WHITE = Color(255, 255, 255)
 if(__name__ == "__main__"):
     # test
     from .print import print_colors
-    # from ..pyxyv import illust
-    # ill = illust.Illust(88125445)
-    from ...backend import requests
-    im = requests.get_image(r"https://a.ppy.sh/12243730?1651404862.jpeg")[1]
-    # im = ill.get_pages(0, 1)[0]
-    # im = Image.open(im)
+    from ..pyxyv import illust
+    ill = illust.Illust(88125445)
+    im = ill.get_pages(0, 1)[0]
+    im = Image.open(im)
     print(image_colors(im, 1))
     print_colors(image_colors(im, 1)[0].replace(S=0.2, L=0.8))
     print_colors(image_border_color(im))

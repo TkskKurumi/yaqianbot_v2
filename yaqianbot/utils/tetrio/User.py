@@ -1,5 +1,5 @@
-from ...backend import requests
-
+# from ...backend import requests
+from . import requests
 import json
 
 

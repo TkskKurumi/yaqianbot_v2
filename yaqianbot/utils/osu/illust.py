@@ -10,7 +10,7 @@ from ..image.colors import Color
 from ..image.print import print_colors
 from ..candy import print_time, locked
 from ..image import process, sizefit, image_colors, adjust_L, adjust_A
-from ...backend import requests
+from . import requests
 from .mania_difficulty import Chart as Chart4k
 from .user import User
 from ..plot_lock import pyplot_lock

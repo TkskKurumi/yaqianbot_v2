@@ -1,5 +1,5 @@
 from datetime import datetime, timezone, timedelta
-from ..backend.configure import bot_config
+from .configure import bot_config
 def now():
     tz = timezone(timedelta(hours=int(bot_config.get("tz",  0))))
     ret = datetime.now().astimezone(tz)

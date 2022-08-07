@@ -97,7 +97,7 @@ def cmd_pixiv(message: CQMessage, *args, **kwargs):
 
 @receiver
 @threading_run
-@startswith("/pix$")
+@startswith("/pix$|/色图")
 def cmd_pixiv_(message: CQMessage):
     today = _getRankingToday()
     delta = abs(random.normalvariate(0, 300))
