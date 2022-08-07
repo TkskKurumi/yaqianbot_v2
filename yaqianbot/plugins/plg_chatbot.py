@@ -140,6 +140,12 @@ def show_pending(message, key=None):
     decline_link = link("decline "+key, decline)
     meow = ["\n输入%s以确认加入问答; 输入%s以取消加入问答"%(accept_link, decline_link)]
     message.response_sync(mes+meow)
+def response_when(message, when):
+    chat = get_chat(when)
+    if(chat is not None):
+        mes = chat.response
+        mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
+        message.response_sync(mes)
 @receiver
 @threading_run
 @on_exception_response

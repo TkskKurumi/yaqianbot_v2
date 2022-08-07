@@ -1,8 +1,10 @@
-from yaqianbot.utils.pyxyv import requests, illust, rand_img
-from os import path
-import tempfile, sys
-print(illust.Illust().urls)
-print(illust.Illust().get_pages(quality="thumb"))
-print(illust.Ranking())
-print(illust.Ranking().ids)
-print(rand_img())
+def colored(r, g, b, text):
+    return "\033[38;2;{};{};{}m{} \033[38;2;255;255;255m".format(r, g, b, text)
+  
+text = 'Hello, World'
+colored_text = colored(255, 0, 0, text)
+print(colored_text)
+
+#or
+
+print(colored(255, 0, 0, 'Hello, World'))

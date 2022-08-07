@@ -60,6 +60,17 @@ def adjust_A(im, adjust=-0.5):
     return Image.fromarray(arr)
 
 
+
+def adjust_L(im, adjust=-0.9):
+    alpha = int(abs(adjust)*255)
+    if(adjust < 0):
+        color = (0, 0, 0, alpha)
+    else:
+        color = (255, 255, 255, alpha)
+    cover = Image.new("RGBA", im.size, color)
+    ret = Image.alpha_composite(im.convert("RGBA"), cover)
+    return ret.convert(im.mode)
+
 if(__name__ == "__main__"):
     im = Image.new("RGB", (100, 100), (255, 100, 200))
     from .print import image_show_terminal

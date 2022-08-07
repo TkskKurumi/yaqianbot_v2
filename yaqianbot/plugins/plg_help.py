@@ -19,14 +19,21 @@ def add_indent(s):
 
 
 class plugin_func_option:
-    def __init__(self, name, desc, type=0):
+    def __init__(self, name, desc, arg_desc = None, type=0):
         self.type = type
         self.name = name
         self.desc = desc
-
+        self.arg_desc = arg_desc
     def __str__(self):
+        if(self.type & OPT_NOARGS):
+            arg_desc = ""
+        else:
+            if(self.arg_desc is None):
+                arg_desc = " [参数]"
+            else:
+                arg_desc = " "+self.arg_desc
         # ret ="f"{self.name}{"" if self.type&OPT_NOARGS else " 参数"}\n{INDENT}{self.desc}""
-        ret = f"""{self.name}{"" if self.type&OPT_NOARGS else " 参数"}\n{INDENT}{self.desc}"""
+        ret = f"""{self.name}{arg_desc}\n{INDENT}{self.desc}"""
         return ret
 
 
@@ -66,7 +73,7 @@ class plugin:
             friendly_name = name
         self.friendly_name = friendly_name
         self.funcs = []
-        plugins[self.friendly_name] = self
+        plugins[self.friendly_name.lower()] = self
 
     def append(self, x):
         self.funcs.append(x)

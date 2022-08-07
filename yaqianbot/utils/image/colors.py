@@ -41,7 +41,7 @@ def image_colors(img: Image.Image, k: int, weight_by_s = False, return_type = "c
     w, h = img.size
     colors = []
     weights = []
-    for i in range(10):
+    for i in range(k*10):
         x, y = random.randrange(w), random.randrange(h)
         c = img.getpixel((x, y))
         colors.append(c)

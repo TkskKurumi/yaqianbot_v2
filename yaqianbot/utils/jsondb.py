@@ -64,14 +64,14 @@ class jsondb:
             bn = path.basename(pth)
             bn, ext = path.splitext(bn)
             hashed = bn
-        if(pth in self.loaded):
+        if(hashed in self.loaded):
             return self.d[hashed]
         if(path.exists(pth)):
             j = loadjson(pth)
             self.d[hashed] = j
         else:
             j = {}
-        self.loaded.add(pth)
+        self.loaded.add(hashed)
         return j
     def _save(self, key):
         self._load(key)

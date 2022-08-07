@@ -50,8 +50,17 @@ class User:
         r = requests.get(url, headers=credentials.get_header())
         self.info = AttrDict(r.json())
         return self.info
-
-
+    def get_beatmap_score(self, beatmap_id):
+        url = "/".join([endpoint, "beatmaps", str(beatmap_id), "scores", "users", str(self.id_int)])
+        r = requests.get(url, headers=credentials.get_header())
+        ret = r.json()
+        if("score" in ret):
+            if("beatmapset" not in ret["score"]):
+                url = "/".join([endpoint, "beatmaps", str(beatmap_id)])
+                r = requests.get(url, headers=credentials.get_header())
+                j = r.json()
+                ret["score"]["beatmapset"]=j["beatmapset"]
+        return ret
     def get_scores(self, type="best", params=None, mode=None):
         if(params is None):
             params = dict()
@@ -71,7 +80,7 @@ class User:
 
 
 if(__name__ == "__main__"):
-    u = User("[Crz]Rumia")
+    u = User("yzhh")
     # print(u.info)
     print("len_scores", len(u.get_scores()))
     pth = path.join(tempfile.gettempdir(), "userscores.json")
@@ -91,4 +100,9 @@ if(__name__ == "__main__"):
     u.get_info(mode = "fruits")
     pth = path.join(tempfile.gettempdir(), "user_afk.json")
     savejson(pth, u.info)
+    print(pth)
+
+    score = u.get_beatmap_score(2062536)
+    pth = path.join(tempfile.gettempdir(), "bmscore.json")
+    savejson(pth, score)
     print(pth)

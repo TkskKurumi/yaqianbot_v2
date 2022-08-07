@@ -1,5 +1,5 @@
 from .background import *
-from .process import adjust_A
+from .process import adjust_A, adjust_L
 from .colors import Color, image_colors
 import numpy as np
 from PIL import Image
@@ -31,14 +31,3 @@ def gif_frames_fps(gifimg):
         dur = 1000
     return frames, len(frames)/(dur/1000)
 
-
-
-def adjust_L(im, adjust=-0.9):
-    alpha = int(abs(adjust)*255)
-    if(adjust < 0):
-        color = (0, 0, 0, alpha)
-    else:
-        color = (255, 255, 255, alpha)
-    cover = Image.new("RGBA", im.size, color)
-    ret = Image.alpha_composite(im.convert("RGBA"), cover)
-    return ret.convert(im.mode)

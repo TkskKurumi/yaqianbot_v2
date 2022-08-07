@@ -7,14 +7,13 @@ from pil_functional_layout.widgets import Text, RichText, Column, Row
 from .plg_admin import link_send_content
 from ..utils.image import sizefit
 from ..utils.image.colors import Color
-
+from . import plg_help
 
 def renderitem(sauce, size=512):
     head = sauce["header"]
     data = sauce["data"]
     thumb = head["thumbnail"]
 
-    
     f = lambda text, **kwargs: text
     highlight_fill = Color.from_hsl(0, 1, 0.8).get_rgba()
     highlight_bg = Color.from_hsl(0, 1, 0.2).get_rgba()
@@ -28,9 +27,8 @@ def renderitem(sauce, size=512):
     img = sizefit.area(img, 5000)
     img = sizefit.fix_width(img, size)
 
-
     lines = [img]
-    lines.append(TR.render(text="相似度: %s%%"%head["similarity"]))
+    lines.append(TR.render(text="相似度: %s%%" % head["similarity"]))
     for k, v in data.items():
         if(k == "ext_urls"):
             for url in v:
@@ -49,6 +47,16 @@ def renderitem(sauce, size=512):
             lnk = link_send_content(v)
             text = ['发送"', T.render(text=lnk), '"获取标题']
             lines.append(TR.render(text=text))
+        elif(k == "pixiv_id"):
+            text = "PIXIV ID: "+str(v)
+            lines.append(TR.render(text=text))
+            if("pixiv" in plg_help.plugins):
+                plg_pixiv = plg_help.plugins['pixiv'].module
+                ill = plg_pixiv.Illust(v)
+                lnk = plg_pixiv.link_show_illust(ill)
+                lnk = T.render(text=lnk)
+                text = ['发送"', lnk,'"查看原图']
+                lines.append(TR.render(text=text))
         else:
             text = "%s: %s" % (k, v)
             lines.append(TR.render(text=text))
@@ -68,7 +76,7 @@ def cmd_sauce(message: CQMessage, *args, **kwargs):
     sauces = sorted(sauces, key=lambda x: -float(x["header"]["similarity"]))
     mes = []
     for i in sauces[:5]:
-        if(float(i["header"]["similarity"])<70):
+        if(float(i["header"]["similarity"]) < 70):
             break
         mes.append(renderitem(i))
     if(mes):

@@ -58,9 +58,9 @@ def illust_om4k(beatmap_id):
         raise Exception("beatmap is not mania 4k.")
 
     try:
-        cover = requests.get_image(bmset["covers"]["slimcover"])[1]
+        cover = requests.get_image(bms["covers"]["slimcover"])[1]
     except Exception:
-        cover = requests.get_image(bmset["covers"]["cover"])[1]
+        cover = requests.get_image(bms["covers"]["cover"])[1]
     raise NotImplementedError
 
 
@@ -99,6 +99,11 @@ def rank_badge(rank="S", font_size=28):
     elif(rank == "X"):
         rank = "SS"
         bgc = (190, 10, 140)
+        fgc = Color.from_hsl(180, 0.9, 0.95)
+        sdc = (0, 100, 100)
+    elif(rank == "XH"):
+        rank = "SS"
+        bgc = (0, 170, 180)
         fgc = Color.from_hsl(180, 0.9, 0.95)
         sdc = (0, 100, 100)
     elif(rank == "A"):
@@ -238,6 +243,7 @@ def mania_judgement(judge, size=48):
 
 
 def illust_score_detail(score: Dict, size=1280, style="dark"):
+    
     bmset = score["beatmapset"]
     bm = score["beatmap"]
 
@@ -308,8 +314,9 @@ def illust_score_detail(score: Dict, size=1280, style="dark"):
     t_title = Column([t_title, t_version, t_bid], alignX=0.1).render()
 
     t_player = score["user"]["username"]
-    text_type = "%s%d" % (score["type"].upper(), score["type_idx"])
-    t_player += " - "+text_type
+    if("type" in score):
+        text_type = "%s%d" % (score["type"].upper(), score["type_idx"])
+        t_player += " - "+text_type
     if(score.get("pp")):
         t_player += " - %.1f pp" % score.get("pp")
     t_player = T.render(text=t_player, fs=t_size_username)

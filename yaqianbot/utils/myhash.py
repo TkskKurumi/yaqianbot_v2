@@ -1,7 +1,8 @@
 import numpy as np
+from PIL import Image
 def imghash(img, length=10):
     im = img.convert("RGB").resize((10, 10))
-    return base32(np.array(im), length=length)
+    return myhash(np.array(im), length=length)
 def myhash(x, length = 50):
     mask = (1<<length)-1
     offset = 7
@@ -12,6 +13,8 @@ def myhash(x, length = 50):
             ret ^= myhash(i, length=length)
             ret = (ret>>length)^(ret&mask)
         return ret
+    elif(isinstance(x, Image.Image)):
+        return imghash(x, length)
     elif(isinstance(x, str)):
         ls = list(x.encode("utf-8"))
         return myhash(ls, length=length)

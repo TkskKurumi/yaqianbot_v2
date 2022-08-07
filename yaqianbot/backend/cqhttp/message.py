@@ -5,16 +5,18 @@ import re
 from aiocqhttp.message import MessageSegment as MSEG
 from ..bot_threading import threading_run
 from ..base_message import User, Message
+import requests as _requests
 from .. import requests
 from ...utils.candy import print_time, log_header
 from . import cqhttp
 from os import path
 from PIL import Image
 from math import sqrt
-from ..paths import temppth
+from ..paths import temppth, mainpth
 import base64
 from io import BytesIO
-
+import shutil
+from ..configure import bot_config
 
 def img_b64(im, limit_size=1e6):
 
@@ -63,8 +65,19 @@ def img_file_b64(filename, limit_size=(2 << 20)):
         return ret
     else:
         return img_b64(im, limit_size)
-
-
+def file_b64(filename):
+    with open(filename, "rb") as f:
+        ret = f.read()
+    ret = base64.b64encode(ret).decode("ascii")
+    return ret
+def mp4_b64(filename):
+    return file_b64(filename)
+http_host = bot_config.get("HTTP_FILE_ADDR", "http://cloud.caicai.pet:8010")
+def http_file(filename):
+    dst = shutil.copy(filename, path.join(mainpth, "httpserver"))
+    ret = "/".join([http_host, path.basename(dst)])
+    print(_requests.head(ret))
+    return ret
 def prepare_message(mes):
     if(not isinstance(mes, list)):
         mes = [mes]
@@ -78,8 +91,13 @@ def prepare_message(mes):
                     mes = MSEG.image(file)
                     ret.append(mes)
                 elif(ext in [".wav", ".mp3", ".ogg"]):
-                    mes = MSEG.record(i)
+                    file = "base64://"+file_b64(i)
+                    mes = MSEG.record(file)
                     ret.append(mes)
+                # elif(ext in [".mp4"]):
+                #     f = http_file(i)
+                #     mes = MSEG.video(f)
+                #     ret.append(mes)
                 else:
                     ret.append(MSEG.text(i))
             else:
@@ -131,6 +149,32 @@ class CQUser(User):
 
 
 class CQMessage(Message):
+    def asdict(self):
+        return self.raw
+    @classmethod
+    def fromdict(cls, d):
+        return cls.from_cq(d)
+    def construct_forward(self, message, uin=None, name=None):
+        if(uin is None):
+            uin = self.raw["self_id"]
+        if(name is None):
+            _ = cqhttp._bot.sync.get_login_info(self_id=self.raw["self_id"])
+            name = _.get("nickname", "菜菜")
+        data = dict()
+        data["uin"] = uin
+        data["name"] = name
+        data["content"] = prepare_message(message)
+        return {"type": "node", "data": data}
+    def send_forward_message(self, messages):
+        raw = self.raw
+        kwargs = {}
+        kwargs["self_id"] = raw["self_id"]
+        if("group_id" in raw):
+            kwargs["group_id"] = raw["group_id"]
+        else:
+            raise Exception("only supports send_foward_message for group")
+        kwargs["messages"] = messages
+        return cqhttp._bot.sync.send_group_forward_msg(**kwargs)
     def get_rich_array(self):
         mes = self.raw.message
         if(isinstance(mes, str)):
@@ -149,10 +193,20 @@ class CQMessage(Message):
                 ret.append(im)
         return ret
         # return super().get_rich_array()
+    @classmethod
+    async def from_cqpoke(cls, event):
+        user_id = event["user_id"]
+        self_id = event["self_id"]
+        user_info = await cqhttp._bot.get_stranger_info(self_id = self_id, user_id = user_id)
+        from_group = event.get("group_id", "private")
+        sender = User(str(user_id), user_info.get("nickname", "Unknown User"), from_group)
+        raw = event
+        self_id = str(self_id)
+        return cls(raw = raw, self_id = self_id, sender = sender)
 
     @classmethod
     def from_cq(cls, event):
-        
+
         ated = list()
         self_id = str(event.get("self_id"))
         if("group_id" in event):
@@ -212,6 +266,11 @@ class CQMessage(Message):
         for key in ["message_type", "group_id", "user_id", "self_id"]:
             if(key in self.raw):
                 args[key] = self.raw[key]
+        if("message_type" not in args):
+            if(self.sender.from_group == "private"):
+                args["message_type"] = "private"
+            else:
+                args["message_type"] = "group"
         prepare(message=prepare_message(message))
         # print(args)
         ret = cqhttp._bot.sync.send_msg(**args)

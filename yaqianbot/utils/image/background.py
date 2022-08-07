@@ -103,8 +103,26 @@ def colorvec(arr: np.ndarray, colors: List):
                 ret[y, x] += color_arr[i]*arr[y, x, i]
             ret[y, x] /= np.sum(arr[y, x])
     return Image.fromarray(ret.astype(np.uint8))
-
-
+def grids1(w, h, color_h, color_v, angle=45, gap=None):
+    if(gap is None):
+        gap = ((w*w+h*h)**0.5)/20
+    color_h = [tuple(c) for c in color_h]
+    color_v = [tuple(c) for c in color_v]
+    n_color_h = len(color_h)
+    n_colors = len(color_h)+len(color_v)
+    _cos = math.cos(angle/180*pi)
+    _sin = math.sin(angle/180*pi)
+    xys = arangexy(w, h)
+    xs = xys[:,:,1].astype(np.float32)
+    ys = xys[:,:,0].astype(np.float32)
+    h = (xs*_cos + ys*_sin)/gap
+    v = (-xs*_sin + ys*_cos)/gap
+    h = (h%n_color_h).astype(np.int32)
+    v = (v%len(color_v)+n_color_h).astype(np.int32)
+    eye_h = np.eye(n_colors)[h]
+    eye_v = np.eye(n_colors)[v]
+    eye = eye_h+eye_v
+    return colorvec1(eye, color_h+color_v)
 def grids(w, h, color_h=None, color_v=None, angle=45, gap=None):
     if(color_h is None):
         color_h = [WHITE, Color(128, 128, 128)]
@@ -250,12 +268,10 @@ def unicorn(w, h, colora=None, colorb=None, colorc=None, colord=None):
 
 
 if(__name__ == "__main__"):
-    # from .print import image_show_terminal
+    from .print import image_show_terminal
+    color_h=[(100,200,255)]
+    color_v=[(255,80,120),(255,120,200)]
     # im = unicorn1(100, 100, colors="RED GREEN BLUE")
-    # image_show_terminal(im)
-    w = 10
-    h = 20
-    a = arangexy(w, h)
-    for y in range(h):
-        for x in range(w):
-            print(y, x, a[y, x])
+    im = grids1(200,100,color_v, color_v)
+    image_show_terminal(im)
+    

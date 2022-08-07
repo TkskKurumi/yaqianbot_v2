@@ -106,6 +106,7 @@ def weight_by_rank(ls, alpha=0.5):
 class Chart:
     def __init__(self, notes, title, cache_key=None):
         columns = set([column_x for column_x, st, ed in notes])
+        print(columns)
         columns = sorted(list(columns))
         columns = {i: idx for idx, i in enumerate(columns)}
         notes = [(columns[column_x], st, ed) for column_x, st, ed in notes]
@@ -171,7 +172,7 @@ class Chart:
         # d_density = self._calc_stream_calc_uniformity(multi)
         d_meow = self.calc_stream_complexity(multi)
         # return d_stream*((d_density/4)**0.1)/1.3/1.27/1.06
-        return d_stream*(d_meow**0.5)
+        return d_stream*(d_meow**0.5)/1.2
 
     def calc_jumpstream_partial(self, multi):
         ls = list(multi)
@@ -301,7 +302,7 @@ class Chart:
         streamish = self.calc_streamish_partial(multi)
         jackish = self.calc_jackish_partial(multi)
         mx, mn = max(streamish, jackish), min(streamish, jackish)
-        return mx*0.75+mn*0.25
+        return (mx*0.75+mn*0.25)/1.1
         # st = self.calc_stream_partial(multi)
         # js = self.calc_jumpstream_partial(multi)
         # hs = self.calc_handstream_partial(multi)
@@ -371,14 +372,16 @@ class Chart:
 
     @classmethod
     def from_osu_string(cls, s, dt=False, rate=1, cache_key=None):
-        pattern = r'(\d+,\d+,\d+,\d+,\d+,\d+):'
+        pattern = r'\s(\d+,\d+,\d+,\d+,\d+,\d+):'
         """with open(pth, "r", encoding="utf-8") as f:
             s = f.read()"""
         notes = []
         # columns = set()
         for idx, notestr in enumerate(re.findall(pattern, s)):
-            x, y, starttime, note_type, _0, endtime = [
-                int(_) for _ in re.split('[,:]', notestr)]
+            ls = [int(_) for _ in re.split('[,:]', notestr)]
+            if(idx<10):
+                print(notestr, ls)
+            x, y, starttime, note_type, _0, endtime = ls
             column_idx = x
             if(endtime <= starttime):
                 endtime = starttime
@@ -530,8 +533,8 @@ class Chart:
 
         plt.subplot(2, 2, 4)
         # for label in list(self.all_pattern_partial())+["Stamina"]:
-        for label in ["Streamish", "Jackish"]:
-            # for label in ["Overall", "Stamina"]:
+        # for label in ["Streamish", "Jackish"]:
+        for label in ["Overall", "Stamina"]:
             plt.plot(by_time["Time"], by_time[label], label=label)
 
         plt.legend()

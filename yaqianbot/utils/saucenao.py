@@ -6,7 +6,7 @@ from os import path
 from io import BytesIO
 from .jsondb import jsondb
 from PIL import Image
-from .myhash import imghash
+from .myhash import base32
 import time
 tmp = path.expanduser("~")
 cache = jsondb(path.join(tmp, "tmp", "saucenao", "cache"), method=lambda x:str(x)[:3])
@@ -24,7 +24,8 @@ def get_sauce(img):
     if(isinstance(img, str) and path.exists(img)):
         img = Image.open(img)
     
-    hashed = imghash(img)
+    # hashed = imghash(img)
+    hashed = base32(img)
     if(hashed in cache):
         ret = cache[hashed]
         if(ret["expire"] < time.time()):
