@@ -31,8 +31,9 @@ def update_db():
 @receiver
 @threading_run
 @on_exception_response
-@command("/bangumi", opts = {})
-def cmd_bangumi_search(message: Message, *args, **kwargs):
+@command("/bangumi", opts = {"-p"})
+def cmd_bangumi_search(message: Message, *args, page=1, **kwargs):
+    page = int(page)
     title = " ".join(args)
     
     time_split = 10
@@ -43,12 +44,14 @@ def cmd_bangumi_search(message: Message, *args, **kwargs):
         nonlocal start_search, message, last_report, time_split
         if(idx%50 == 0):
             tm = time.time()
+        
+            elapsed = tm-start_time
+            remain = elapsed/(idx+1)*(n-idx)
             if(tm>last_report+time_split):
-                elapsed = tm-start_time
-                remain = elapsed/(idx+1)*(n-idx)
                 simple_send("正在搜索%d/%d, 预计剩余%.1f秒"%(idx, n, remain))
                 last_report = tm
-                time_split+=(60-time_split)/2
+                time_split+=(60-time_split)/3
+            print("bangumi search %d/%d, %.1f seconds remain"%(idx, n, remain), end="\r")
     torrent_ls = moe_search(title, progress_report)
     mes = []
     imgs = []
@@ -59,7 +62,11 @@ def cmd_bangumi_search(message: Message, *args, **kwargs):
         ret.append(RT.render(text=["查看磁力链接"]))
         return RT.render(text=ret)
     
-    for torrent in torrent_ls.torrents[:24]:
+    
+    one_page_cnt = 16
+    st = (page-1)*one_page_cnt
+    ed = page*one_page_cnt
+    for torrent in torrent_ls.torrents[st:ed]:
         title = torrent.title
         with print_time("illust "+title):
             img = illust_torrent(torrent, extra=ex)

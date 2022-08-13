@@ -3,7 +3,10 @@ from ..backend import base_message as Message
 from ..backend.receiver_decos import *
 from ..utils import after_match
 from ..utils.myhash import base32
+from ..utils.candy import simple_send
 from pil_functional_layout.widgets import RichText
+import sys
+import importlib
 lnks = dict()
 
 
@@ -36,6 +39,19 @@ def cmd_handle_lnk(message: Message):
         lnks[message.plain_text](message)
 
 
+@receiver
+@threading_run
+@on_exception_response
+@is_su
+@command("/reload", opts = {})
+def cmd_admin_reload(message:Message, *args, **kwargs):
+    for plg in args:
+        for name, module in list(sys.modules.items()):
+            if(name.endswith(plg)):
+                importlib.reload(module)
+                f = getattr(module, "__file__", "unknownfile")
+                simple_send("reloaded %s (%s)"%(name, f))
+    
 @receiver
 @threading_run
 @startswith("/exec")

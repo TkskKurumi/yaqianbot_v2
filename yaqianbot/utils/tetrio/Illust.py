@@ -4,7 +4,7 @@ from PIL import Image, ImageDraw
 from math import sin, cos, pi, exp
 from ..image.colors import Color
 # from .requests import getimage
-from ...backend.requests import get_image
+from .requests import get_image
 from .User import User
 from pil_functional_layout.widgets import RichText, Text
 

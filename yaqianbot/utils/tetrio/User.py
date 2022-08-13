@@ -1,12 +1,12 @@
-from ...backend import requests
-
+# from ...backend import requests
+from . import requests
 import json
 
 
 class User:
     def __init__(self, user_id):
         url = "https://ch.tetr.io/api/users/%s" % user_id
-        r = requests.sess.request("GET", url, expire_after=30)
+        r = requests.sess.request("GET", url)
         j = r.json()
         if(not j["success"]):
             raise Exception(j["error"])
@@ -59,7 +59,7 @@ class User:
         url2 = r"https://ch.tetr.io/api/users/lists/league?limit=5&before=%d" % self.league["rating"]
         for url in [url1, url2]:
 
-            r = requests.sess.request("GET", url, expire_after=45)
+            r = requests.sess.request("GET", url)
             j = r.json()
             if(not j["success"]):
                 e = Exception(j["error"])
