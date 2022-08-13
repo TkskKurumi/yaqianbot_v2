@@ -146,7 +146,15 @@ def cmd_setutime(message: CQMessage):
         data["content"] = prepare_message(rand_img(message))
         ret["data"] = data
         return ret
-    mes = [f() for i in range(20)]
+    mes = list()
+    for i in range(50):
+        try:
+            mes.append(f())
+        except Exception:
+            import traceback
+            traceback.print_exc()
+            
+    # mes = [f() for i in range(50)]
     _bot.sync.send_group_forward_msg(self_id = message.raw["self_id"], messages=mes, group_id = message.raw["group_id"])
 
 plg = plugin(__name__, "PIXIV")
