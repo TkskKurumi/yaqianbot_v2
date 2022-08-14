@@ -5,6 +5,7 @@ home = path.expanduser("~")
 workpth = os.environ.get("BANGUMI_MOE_PATH") or path.join(home, '.bangumi_moe')
 cachepth = path.join(workpth, "cache")
 temppth = path.join(workpth, "tmp")
+illust_cache_pth = path.join(workpth, "illust_bangumi")
 mime2ext = {
     "image/jpeg":".jpg",
     "image/png":".png",

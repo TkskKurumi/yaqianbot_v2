@@ -3,7 +3,14 @@ import inspect
 import sys
 from os import path
 
-
+class FakeLock:
+    # for debug
+    def __init__(self):
+        pass
+    def acquire(self):
+        print(self, ".acquire")
+    def release(self):
+        print(self, ".release")
 def simple_send(messages):
     frame = inspect.currentframe().f_back
     # print(frame.f_locals)
@@ -25,7 +32,12 @@ class print_time:
         t = time.time()-self.time
         if(t > 1 and self.enabled):
             print("%s uses %.1f seconds" % (self.name, t))
-
+def lockedmethod(func):
+    def inner(self, *args, **kwargs):
+        with locked(self.lck):
+            ret = func(self, *args, **kwargs)
+        return ret
+    return inner
 
 class locked:
     def __init__(self, lock):

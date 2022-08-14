@@ -2,6 +2,7 @@ from . import requests
 from dateutil.parser import parse as parse_time
 from typing import List
 from .database import torrents as torrents_db
+from datetime import timedelta
 class AttrDict(dict):
     def __getattr__(self, __name: str):
         if(__name in self):
@@ -23,6 +24,8 @@ class TorrentListing:
         for torrent in torrents:
             if(torrent._id not in torrents_db):
                 torrents_db[torrent._id] = torrent
+    def __iter__(self):
+        return self.torrents.__iter__()
     @property
     def time_min(self):
         mn = None
@@ -44,8 +47,7 @@ class TorrentListing:
         return self.time_min, self.time_max
 def _torrent_page(idx):
     url = r"https://bangumi.moe/api/torrent/page/%s"%idx
-    # r = requests.sess.request("GET", url, expire_after = 120)
-    r = requests.request("GET", url, expire_after = 300)
+    r = requests.request("GET", url, expire_after = timedelta(minutes = 30))
     return AttrDict(r.json())
 class TorrentPage(TorrentListing):
     @classmethod
