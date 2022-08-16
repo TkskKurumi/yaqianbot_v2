@@ -248,7 +248,7 @@ def profile(user: User, size=800, color: Color = Color(30, 100, 233), style="dar
         box = [ellipse_box[idx] + (expand if idx < 2 else -expand)
                for idx in range(4)]
         _w, _h = box[2]-box[0], box[3]-box[1]
-        im = get_image(url)[1].resize((_w, _h), Image.LANCZOS).convert("RGBA")
+        im = get_image(url).resize((_w, _h), Image.LANCZOS).convert("RGBA")
         # im = getimage(url)
         fill_color = color1a.get_rgba()
         bord_color = color2.get_rgba()

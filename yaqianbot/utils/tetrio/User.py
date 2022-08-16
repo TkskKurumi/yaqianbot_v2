@@ -32,21 +32,21 @@ class User:
         try:
             url = r"https://tetr.io/user-content/avatars/%s.jpg" % self._id
             # im = getimage(url)
-            im = requests.get_image(url)[1]
+            im = requests.get_image(url)
         except Exception as e:
             # return getimage(r"https://tetr.io/res/avatar.png")
-            im = requests.get_image(r"https://tetr.io/res/avatar.png")[1]
+            im = requests.get_image(r"https://tetr.io/res/avatar.png")
         return im
 
     def get_flag(self):
         url = r"https://tetr.io/res/flags/%s.png" % self.user["country"].lower(
         )
-        return requests.get_image(url)[1]
+        return requests.get_image(url)
 
     def get_league_badge(self):
         url = r"https://tetr.io/res/league-ranks/%s.png" % self.league["rank"].lower(
         )
-        return requests.get_image(url)[1]
+        return requests.get_image(url)
 
     def get_relative_skills(self):
         skills = ["apm", "pps", "vs"]

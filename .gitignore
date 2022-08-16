@@ -1,3 +1,10 @@
 *.pyc
 */__pycache__
 *.sqlite
+*.log
+*.pid
+*.sh
+tmp.*
+*.out
+yaqianbot/backend/files
+yaqianbot/utils/osu/files
