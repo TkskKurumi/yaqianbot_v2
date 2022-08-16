@@ -4,7 +4,7 @@ import os
 mainpth = \
     bot_config.get("DIRECTORY") or \
     bot_config.get("PATH") or \
-    path.join(path.dirname(__file__), "files")
+    path.join(path.expanduser("~"), ".tmp", "yaqianbot", "files")
 temppth = path.join(mainpth, '.tmp')
 cachepth = path.join(mainpth, '.cache')
 
