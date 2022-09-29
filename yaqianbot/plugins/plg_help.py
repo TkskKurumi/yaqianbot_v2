@@ -1,6 +1,7 @@
-from ..backend.receiver_decos import on_exception_response, threading_run, command
+from ..backend.receiver_decos import on_exception_response, threading_run, command, all_commands
 from ..backend.cqhttp.message import CQMessage
 from ..backend import receiver
+from ..utils.candy import simple_send
 from ..utils.image.background import triangles
 from ..utils.image import sizefit
 from pil_functional_layout.widgets import RichText, CompositeBG, AddBorder
@@ -11,11 +12,11 @@ __all__ = ["plugin", "plugin_func", "plugin_func_option",
 
 OPT_OPTIONAL = 1 << 0
 OPT_NOARGS = 1 << 1
-INDENT = " "*4
+INDENT = " "*2
 
 
-def add_indent(s):
-    return '\n'.join([INDENT+i for i in s.split('\n')])
+def add_indent(s, n = 1):
+    return '\n'.join([INDENT*n+i for i in s.split('\n')])
 
 
 class plugin_func_option:
@@ -38,16 +39,20 @@ class plugin_func_option:
 
 
 class plugin_func:
-    def __init__(self, name):
+    def __init__(self, name, desc = None):
         self.name = name
         self.opts = []
-
+        self.desc = desc
     def __str__(self):
         ret = [self.name]
+        if(self.desc):
+            
+            ret.append(INDENT + "说明:")
+            ret.append(add_indent(self.desc, 2))
         if(self.opts):
             ret.append(INDENT+"选项:")
             for i in self.opts:
-                ret.append(add_indent(str(i)))
+                ret.append(add_indent(str(i), 2))
         return "\n".join(ret)
 
     def append(self, x):
@@ -104,7 +109,16 @@ def list_insert(ls, *elements):
         ret.append(i)
     return ret
 
-
+@receiver
+@threading_run
+@on_exception_response
+@command("/指令列表", opts={})
+def cmd_command_list(message: CQMessage, *args, **kwargs):
+    mes = []
+    for fn, i in all_commands.items():
+        pattern, func = i
+        mes.append(pattern)
+    simple_send(", ".join(mes))
 @receiver
 @threading_run
 @on_exception_response
@@ -146,3 +160,4 @@ def cmd_help(message: CQMessage, *args, **kwargs):
 
     RT = CompositeBG(RT, rand_img(message))
     message.response_sync(RT.render())
+__all__ = ["plugin_func_option", "plugin", "plugin_func", "OPT_NOARGS"]

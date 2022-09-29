@@ -13,9 +13,14 @@ class FakeLock:
         print(self, ".release")
 def simple_send(messages):
     frame = inspect.currentframe().f_back
-    # print(frame.f_locals)
-    message = frame.f_locals["message"]
-    ret = message.response_sync(messages)
+    mes = frame.f_locals.get("mes") 
+    message = frame.f_locals.get("message")
+    if(hasattr(mes, "response_sync")):
+        ret = mes.response_sync(messages)
+    elif(hasattr(message, "response_sync")):
+        ret = message.response_sync(messages)
+    else:
+        raise Exception("Cannot do simple_send in this session")
     del frame
     return ret
 
@@ -32,13 +37,19 @@ class print_time:
         t = time.time()-self.time
         if(t > 1 and self.enabled):
             print("%s uses %.1f seconds" % (self.name, t))
-def lockedmethod(func):
+def lockedmethod(func, lck=None):
     def inner(self, *args, **kwargs):
         with locked(self.lck):
             ret = func(self, *args, **kwargs)
         return ret
-    return inner
-
+    if(lck is None):
+        return inner
+    def inner1(*args, **kwargs):
+        nonlocal lck
+        with locked(lck):
+            ret = func(*args, **kwargs)
+        return ret
+    return inner1
 class locked:
     def __init__(self, lock):
         self.lock = lock
@@ -110,3 +121,10 @@ def log_header():
     else:
         file = "..."+file[-7:]
     return "%s: %03d" % (file, __LINE__(2))
+if(__name__=="__main__"):
+    # test
+    def foo():
+        with locked(FakeLock()):
+            print("foo")
+            return "printed result"
+    print(foo())

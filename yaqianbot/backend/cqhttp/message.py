@@ -2,6 +2,7 @@ import html
 from typing import Dict
 from aiocqhttp import Event
 import re
+from easydict import EasyDict as edict
 from aiocqhttp.message import MessageSegment as MSEG
 from ..bot_threading import threading_run
 from ..base_message import User, Message
@@ -19,7 +20,8 @@ import shutil
 from ..configure import bot_config
 
 def img_b64(im, limit_size=1e6):
-
+    if(im.mode == "P"):
+        im = im.convert("RGBA")
     if("A" in im.mode):
         format = "PNG"
     else:
@@ -175,6 +177,11 @@ class CQMessage(Message):
             raise Exception("only supports send_foward_message for group")
         kwargs["messages"] = messages
         return cqhttp._bot.sync.send_group_forward_msg(**kwargs)
+    def get_mseg_list(self):
+        mes = self.raw.message
+        if(isinstance(mes, str)):
+            mes = mes_str2arr(html.unescape(mes))
+        return mes
     def get_rich_array(self):
         mes = self.raw.message
         if(isinstance(mes, str)):
@@ -188,8 +195,12 @@ class CQMessage(Message):
                 t = data["text"]
                 ret.append(t)
             elif(type == "image"):
+                url = data.get("url")
+                if(not url.strip()):
+                    print("Warning: unrecognized Image CQ Segment", data)
+                    continue
                 im = requests.get_image(data["url"])[1]
-                # im = sizefit.fit_shrink(im, w*0.9, h*0.5)
+                
                 ret.append(im)
         return ret
         # return super().get_rich_array()
@@ -206,7 +217,10 @@ class CQMessage(Message):
 
     @classmethod
     def from_cq(cls, event):
-
+        try:
+            sender = event.sender
+        except AttributeError:
+            event = edict(event)
         ated = list()
         self_id = str(event.get("self_id"))
         if("group_id" in event):

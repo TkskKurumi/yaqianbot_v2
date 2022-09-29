@@ -24,8 +24,9 @@ def poke_receiver(func):
     poke_receivers[func.__name__] = func
     return func
 async def message_receiver(event: Event):
-    print("received", event.raw_message)
+    # print("received", event.raw_message)
     mes = CQMessage.from_cq(event)
+    print("received", mes.plain_text)
     for name, func in receivers.items():
         # print(name, func, inspect.isawaitable(func))
         ret = func(mes)
@@ -74,9 +75,7 @@ def timer():
 def run(host="127.0.0.1", port=8008):
     global _is_running
     print("run at", bot_config)
-    # loop = asyncio.new_event_loop()
-    # loop.create_task(_bot.run_task(host=host, port=port))
-    # loop.run_forever()
+    print("receivers:", ", ".join(receivers))
     _is_running = True
     timer()
     asyncio.run(_bot.run_task(host=host, port=port))

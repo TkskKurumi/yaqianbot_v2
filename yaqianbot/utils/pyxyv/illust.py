@@ -32,11 +32,17 @@ class Illust:
         html = requests.get(url).text
 
         start_str = "<meta name=\"preload-data\" id=\"meta-preload-data\" content='"
-        end_str = "'>\n<script async src="
+        end_str = "'>\n<"
         start = html.find(start_str)
         end = html.find(end_str, start)
         j = html[start + len(start_str):end]
-        j = json.loads(j)["illust"]
+        try:
+            j = json.loads(j)["illust"]
+        except Exception as e:
+            debugpth = path.join(temppth, "debug.html")
+            with open(debugpth, "w", encoding="utf-8") as f:
+                f.write(html)
+            raise Exception("Error parsing pixiv html %s, debug with %s"%(url, debugpth))
         j = j[str(id)]
 
         self.id = j['id']

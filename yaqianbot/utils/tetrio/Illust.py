@@ -47,7 +47,7 @@ def skill_polygon(size, skills, font_size=None, color: Color = Color(0, 128, 255
     color2a = color2.replace(A=100)
 
     for skill, values in skills.items():
-        txt = "%s\n%.1f" % (skill, values['value'])
+        txt = "%s\n%.2f" % (skill, values['value'])
         # im_d = RichText(txt, fontSize = font_size, width = font_size*10, alignX=0.5, fill=color2.get_rgba()).render()
         # im_l  fill=color1.get_rgba()).render()
         RT = RichText(txt, fontSize=font_size, width=font_size*10,

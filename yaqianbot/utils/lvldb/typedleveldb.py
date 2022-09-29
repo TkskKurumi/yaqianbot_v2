@@ -8,7 +8,19 @@ from .converters import asbytes, list_as_bytes, list_from_bytes
 from .converters import base_from_types
 from os import path
 import os
+
 class TypedLevelDB:
+    opened = dict()
+    opener_lock = Lock()
+    @classmethod
+    def open(cls, pth, from_bytes = None):
+        with locked(cls.opener_lock):
+            if(pth in cls.opened):
+                ret = cls.opened[pth]
+            else:
+                ret = TypedLevelDB(pth, from_bytes)
+                cls.opened[pth] = ret
+        return ret
     def __init__(self, pth, from_bytes=None):
         self.lck = Lock()
         if(not path.exists(pth)):

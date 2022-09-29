@@ -45,12 +45,14 @@ def cmd_handle_lnk(message: Message):
 @is_su
 @command("/reload", opts = {})
 def cmd_admin_reload(message:Message, *args, **kwargs):
+    mes = []
     for plg in args:
         for name, module in list(sys.modules.items()):
             if(name.endswith(plg)):
                 importlib.reload(module)
                 f = getattr(module, "__file__", "unknownfile")
-                simple_send("reloaded %s (%s)"%(name, f))
+                mes.append("reloaded %s (%s)"%(name, f))
+    simple_send("\n".join(mes))
     
 @receiver
 @threading_run

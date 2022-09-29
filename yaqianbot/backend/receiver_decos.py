@@ -45,11 +45,15 @@ def on_exception_response(func):
                 message.response_sync("输入%s查看完整"%lnk)
             raise e
     return inner
+all_commands = {}
 def command(pattern, opts, bool_opts=None):
     _re = re.compile(pattern)
     def deco(func):
+        global all_commands
+        all_commands[func.__name__] = (pattern, func)
         @wraps(func)
         def inner(message: Message):
+            
             text = message.plain_text
             match = _re.match(text)
             if(match):

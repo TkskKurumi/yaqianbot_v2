@@ -2,6 +2,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 import math
 from .approximate import EPS
+
+
 @dataclass
 class Circle:
     x: float
@@ -18,7 +20,7 @@ class Circle:
         dist = self.O.dist(p)
         judge = dist-self.r
         return judge < -EPS
-    
+
 
 @dataclass
 class Point2d:
@@ -36,7 +38,7 @@ class Point2d:
 
     def __truediv__(self, other):
         return Point2d(self.x/other, self.y/other)
-    
+
     def __mul__(self, other):
         if(isinstance(other, Point2d)):
             # dot product
@@ -58,6 +60,9 @@ class Point2d:
 
     def ascomplex(self):
         return self.x+self.y*1j
+
+    def rotate_by(self, ctr: Point2d, theta):
+        return ctr+(self-ctr).rotate_by_angle(theta)
 
     def rotate_by_complex(self, other):
         ret = (self.x+self.y*1j)
@@ -85,7 +90,9 @@ class Point2d:
 
     def unit(self):
         return self/self.length()
-
+    @property
+    def intxy(self):
+        return int(self.x), int(self.y)
 
 if(__name__ == "__main__"):
     A = Point2d(0, 2)

@@ -36,7 +36,7 @@ class _lcs:
     common_len: int
     a_matched: list
     b_matched: list
-    def calc1(A, B):
+    def calc1(A, B, f_similarity = element_similarity):
         sa = set(A)
         sb = set(B)
         a_matched = ndarray((len(A),), False)
@@ -57,7 +57,7 @@ class _lcs:
             for j, b in enumerate(simple_b):
                 _dp = 0
                 _from = (-1, -1)
-                sim = element_similarity(a[1], b[1])
+                sim = f_similarity(a[1], b[1])
                 if(sim):
                     __dp = (dp[i-1][j-1] if (i and j) else 0)+sim
                     __from = i-1, j-1
