@@ -37,7 +37,7 @@ def image_border_color(img, rettype = "color"):
         raise ValueError(rettype)
 
 
-def image_colors(img: Image.Image, k: int, weight_by_s = False, return_type = "color"):
+def image_colors(img: Image.Image, k: int, weight_by_s = True, return_type = "color"):
     w, h = img.size
     colors = []
     weights = []

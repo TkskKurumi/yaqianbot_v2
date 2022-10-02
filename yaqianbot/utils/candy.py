@@ -61,7 +61,17 @@ class locked:
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.lock.release()
         return
+class released:
+    def __init__(self, lock):
+        self.lock = lock
 
+    def __enter__(self):
+        self.lock.release()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.lock.acquire()
+        return
 
 class __LINE__(object):
     def __init__(self, n=1):

@@ -1,3 +1,4 @@
+from functools import partial
 import html
 from typing import Dict
 from aiocqhttp import Event
@@ -149,10 +150,31 @@ class CQUser(User):
         id = str(sender.get("user_id"))
         return cls(id=id, name=name, from_group=str(from_group))
 
-
+class CQApi:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+    def __getattr__(self, name):
+        api = getattr(cqhttp._bot.sync, name)
+        return partial(api, **self.kwargs)
 class CQMessage(Message):
     def asdict(self):
         return self.raw
+    def get_nickname_by_id(self, uid):
+        uid = str(uid)
+        if(uid == self.sender.id):
+            return self.sender.name
+        if("group_id" in self.raw):
+            for i in self.get_group_member_list():
+                if(uid == str(i["user_id"])):
+                    return i.get("nickname") or i.get("card")
+        raise KeyError(uid)
+    def get_group_member_list(self):
+        self_id = self.raw.self_id
+        if("group_id" not in self.raw):
+            raise Exception("Not in group chat")
+        group_id = self.raw.group_id
+        ret = cqhttp._bot.sync.get_group_member_list(self_id = self_id, group_id = group_id)
+        return ret
     @classmethod
     def fromdict(cls, d):
         return cls.from_cq(d)
@@ -254,6 +276,9 @@ class CQMessage(Message):
         ret = cls(sender=sender, pics=pics, ated=ated,
                   plain_text=plain_text, group=group, raw=event, self_id=self_id)
         ret.update_rpics()
+
+        ret.api = CQApi(self_id = event.self_id)
+
         return ret
 
     def get_sent_images(self, rettype="image", **kwargs):
