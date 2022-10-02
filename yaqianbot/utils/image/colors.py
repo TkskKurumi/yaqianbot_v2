@@ -22,7 +22,7 @@ def _dist(a, b):
 def image_border_color(img, rettype = "color"):
     colors = []
     w, h = img.size
-    arr = img.__array__()
+    arr = np.asarray(img)
     for x in [0, w-1]:
         for y in range(h):
             colors.append(arr[y, x])
