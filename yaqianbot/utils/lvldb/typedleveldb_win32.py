@@ -61,14 +61,14 @@ class TypedLevelDB:
             return self[key]
         return default
     def items(self):
-        for b_k, b_v in self.db.RangeIter():
+        for b_k, b_v in self.db.iterator():
             b_type_item = self.db_type.get(b_k)
             type_k, type_v = list_from_bytes(b_type_item)
             key = self.from_bytes[type_k](b_k)
             value = self.from_bytes[type_v](b_v)
             yield (key, value)
     def __iter__(self):
-        for b_k in self.db.RangeIter(include_value = False):
+        for b_k in self.db.iterator(include_value = False):
             b_type_item = self.db_type.get(b_k)
             type_k, type_v = list_from_bytes(b_type_item)
             key = self.from_bytes[type_k](b_k)
