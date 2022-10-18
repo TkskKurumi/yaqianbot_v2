@@ -1,8 +1,10 @@
+
+from typing import Dict, Tuple, Union, Literal
 from PIL import Image
 
 from io import BytesIO
 from urllib.parse import urlencode
-from pil_functional_layout.widgets import RichText, Grid
+from pil_functional_layout.widgets import RichText, Grid, Column
 from pil_functional_layout import Keyword
 from ..backend.cqhttp.message import CQMessage
 from ..backend.receiver_decos import *
@@ -10,7 +12,14 @@ from ..backend import receiver
 from ..backend.configure import bot_config
 from ..utils.candy import simple_send
 from ..utils.make_gif import make_gif
+from ..utils.lvldb import TypedLevelDB
 import requests
+from ..backend.paths import mainpth
+from os import path
+from ..utils.algorithms.lcs import lcs as LCS
+user_tag_db = TypedLevelDB.open(
+    path.join(mainpth, "saves", "plg_diffusion", "user_tags"))
+
 if("DIFFUSION_HOST" in bot_config):
     HOST = bot_config.get("DIFFUSION_HOST").strip("/")
 else:
@@ -59,7 +68,7 @@ def get_misc_translations():
             ret[arg] = args[-1]
 
     add("大师之作", "masterpiece")
-    add("高画质", "masterpiece, best quality, high quality, cinematic lighting, extremely detailed cg")
+    add("高画质", "masterpiece, best quality, high quality, cinematic lighting, highres, absurdres")
     add("壁纸", "wallpaper")
     add("高细节", "detailed")
     add("高质量", "high quality")
@@ -75,10 +84,17 @@ def get_misc_translations():
     add("船锚符号", "anchor symbol")
     add("福瑞", "furry")
     add("虎牙", "fang")
+    add("伸脚", "presenting foot")
+    add("脚趾", "toes")
+    add("蒸汽", "雾气", "steam")
+    add("看看笔", "presenting pussy")
+    add("城市景观", "cityscape")
+    add("花田", "flower fields")
+    add("草原", "grasslands")
     return ret
 
 
-def get_pos_translations():
+def get_pose_translations():
     ret = dict()
 
     def add(*args):
@@ -98,7 +114,20 @@ def get_pos_translations():
     add("持食物", "holding food")
     add("从下面", "from below")
     add("弓身", "bent over")
-
+    add("顽皮表情", "捉弄表情", "naughty face")
+    add("笑", "smiling")
+    add("厌恶", "disgust")
+    add("张嘴", "mouth open")
+    add("闭眼", "eyes closed")
+    add("从腿到头视角", "cowboy shot")
+    add("摸摸奈子", "breast grab")
+    add("调整泳装", "adjusting swimsuit")
+    add("调整衣装", "adjusting clothes")
+    add("调整发型", "adjusting hair")
+    add("调整帽子", "扶帽子", "adjusting clothes")
+    add("调整胖次", "在穿胖次", "adjusting panties")
+    add("调整袜子", "在穿袜子", "adjusting legwear")
+    add("扶眼睛", "adjusting eyewear")
     return ret
 
 
@@ -116,7 +145,16 @@ def get_body_translations():
     add("露肩", "bare shoulders")
     add("露背", "bare back")
     add("裸体", "nude, naked")
-
+    add("肚子", "stomach, navel")
+    add("露出手臂", "bare arms")
+    add("露肩", "bare shoulders")
+    add("搭肩", "hand on own shoulder")
+    add("搭别人的肩", "hand on another's shoulder")
+    add("露腰", "bare hips")
+    add("裸足", "bare foot")
+    add("裸腿", "bare legs")
+    add("腹股沟", "大腿根", "大腿根儿", "groin")
+    add("秀发遮胸", "hair over breasts")
     return ret
 
 
@@ -130,6 +168,10 @@ def get_clothes_translations():
     add("卫衣", "hoodie")
     add("泳装", "swimsuit")
     add("比基尼", "bikini")
+    add("蕾丝文胸", "lace bra")
+    add("蕾丝内裤", "蕾丝胖次", "lace panties")
+    add("蕾丝内衣", "lace panties, lace bra")
+    add("只穿内衣", "underwear only")
     add("花嫁", "wedding dress, lace-trimed headdress")
     add("围裙", "apron")
     add("裸体围裙", "naked apron")
@@ -144,7 +186,7 @@ def get_clothes_translations():
     add("裤袜", "pantyhose")
     add("旗袍", "china dress, chinese clothes")
     add("机甲娘", "mecha musume")
-    add("机娘", "mecha musume, prosthesis, non-humanoid, mechenical weapon, prosthetic arms, mechanical arm, prosthetic legs")
+    add("机娘", "mecha musume, prosthesis, mechanical weapon, holding weapon")
     add("机械手", "artificial arms, mechanical arms, prosthetic arms")
     add("短裙", "skirt")
     add("分体袖子", "detached sleeves")
@@ -155,8 +197,27 @@ def get_clothes_translations():
     add("水手服", "serafuku, sailor collar")
     add("JK制服", "high school uniform")
     add("衬衫", "shirt")
+    add("红色披肩", "red shawl")
+    add("披肩", "shawl")
     add("领巾", "neckerchief")
     add("红领巾", "red neckerchief")
+    add("敞开衣服", "open clothes")
+    add("敞开外套", "open coat")
+    add("敞开衬衫", "open shirts")
+    add("腿环", "thigh strap")
+    add("臂环", "arm strp")
+    add("护腕", "wrist guards")
+    add("勒肉", "skindentation")
+    add("晒黑", "tan")
+    add("晒痕", "tanlines")
+    add("连体泳装晒痕", "bikini tan")
+    add("比基尼晒痕", "one-piece tan")
+    add("拉开比基尼", "bikini pull")
+    add("脱胖次", "panty pull")
+    add("脱裤袜", "pantyhose pull")
+    add("朱唇微启", "parted lips")
+    add("膝枕", "lap pillow")
+    add("洛丽塔", "lolita fashion")
     return ret
 
 
@@ -188,7 +249,8 @@ def get_items_translations():
     add("塑料杯", "disposable cup")
     add("炸鸡", "fried chicken")
     add("耳机", "headphone")
-
+    add("车辆", "vehicle")
+    add("霓虹灯", "neon lights")
     return ret
 
 
@@ -200,10 +262,12 @@ def get_chara_translations():
         for arg in args[:-1]:
             ret[arg] = args[-1]
     add("阿夸", "pink hair, pink hair, aqua hair, multicolored hair, two-tone hair, pink eyes, streaked hair, ahoge, braid, hololive, minato aqua")
-    add("狼王", "crown, throne, jewelry, gray hair, big breasts, shawl, wolf ears")
+    add("狼王", "crown, throne, jewelry, gray hair, shawl, wolf ears")
     add("むら", "silver hair, blue eyes, short twintails, ahoge")
-    add("C54", "C.54", "golden eyes, black hair, short twintail, red shawl, carrot hair ornament, two-tone hair, red hair, multicolored hair, fang")
+    add("C54", "C.54", "golden eyes, black hair, short twintail, red shawl, two-tone hair, red hair, multicolored hair, fang, red streaked hair")
     add("佐久间魔鸳", "golden hair, yellow hair, small breasts, red eyes, demon horn, succubus, succubus tail")
+    add("埃尔克拉夫特", "blue eyes, flat chest, light bonde hair, brown hair, gradient hair, blunt bangs, bob cut")
+
     return ret
 
 
@@ -225,11 +289,15 @@ def get_hairstyle_translations():
     add("发饰", "hair ornament")
     add("叉叉发饰", "x hair ornament, cross hair ornament")
     add("头饰", "headdress")
+    add("头戴装备", "head gear")
     add("小熊发饰", "bear hair ornament")
     add("猫咪发饰", "cat hair ornament")
     add("鱼发饰", "fish hair ornament")
     add("发夹", "hairclip")
     add("发髻", "hair bun")
+    add("渐变头发", "gradient hair")
+    add("彩色头发", "multicolored hair")
+    add("挑染头发", "streaked hair")
     return ret
 
 
@@ -259,14 +327,18 @@ def get_nsfw_translations():
     add("射身上", "cum on body")
     add("射脸上", "颜射", "cum on face, facial")
     add("吐口水", "spitroast")
+    add("吐舌头", "tongue out")
     add("口水", "drooling")
     add("骆驼趾", "cameltoe")
     add("淫纹", "pubic tattoo, stomach tattoo")
     add("写正字", "tally")
+    add("色色装置", "sex machine")
+    add("异物插入", "object insertion")
+    add("强制高潮", "forced orgasm")
     return ret
 
 
-def get_prompt_translations():
+def get_prompt_translations(message: Union[Literal[None], CQMessage] = None):
     ret = dict()
 
     def add(*args):
@@ -275,8 +347,8 @@ def get_prompt_translations():
             ret[arg] = args[-1]
 
     add("千千", "pink hair, heterochromia, red eyes, blue eyes, cat ears")
-    add("黄金黑箱", "black hair, yellow eyes, golden eyes, elf ear, ahoge")
-    add("黑箱", "black hair, yellow eyes, elf ear, ahoge")
+    add("黄金黑箱", "black hair, yellow eyes, golden eyes, elf, ahoge")
+    add("黑箱", "black hair, yellow eyes, elf, ahoge")
     colors = "pink 粉,blue 蓝,red 红,yellow 黄,golden 金,brown 棕,light brown 浅棕,purple 紫,gray 灰,black 黑".split(
         ",")
     for i in colors:
@@ -285,11 +357,11 @@ def get_prompt_translations():
         chn = spl[-1]
         add(chn+"发", eng+" hair")
         add(chn+"眼", eng+" eyes")
-    add("萝莉", "loli")
+    add("萝莉", "小萝莉", "loli")
     add("小女孩", "little girl")
     add("御姐", "mature female")
     ret.update(get_clothes_translations())
-    ret.update(get_pos_translations())
+    ret.update(get_pose_translations())
     ret.update(get_body_translations())
     ret.update(get_misc_translations())
     ret.update(get_breasts_translations())
@@ -298,10 +370,14 @@ def get_prompt_translations():
     ret.update(get_kemomimi_translations())
     ret.update(get_nsfw_translations())
     ret.update(get_chara_translations())
+    if(message):
+        custom = user_tag_db.get(message.sender.id, {})
+        ret.update(custom)
     return ret
 
 
-def process_prompt(prompt):
+def process_prompt(prompt, message: Union[Literal[None], CQMessage] = None):
+
     def process_symbols(prompt):
         prompt = prompt.replace("，", ",")
         prompt = prompt.replace(",", ", ")
@@ -322,34 +398,47 @@ def process_prompt(prompt):
                 remain = remain.replace(v, "")
                 replaced[k] = v
         prompt = process_symbols(prompt)
-        remain = process_symbols(remain)
+        remain = process_symbols(remain.replace("{", "").replace("}", ""))
         return prompt, replaced, remain
     prompt = process_symbols(prompt)
+
     prompt, replaced, remain = process_translation(
-        prompt, get_prompt_translations())
+        prompt, get_prompt_translations(message=message))
     return prompt, replaced, remain
 
 
-def illust_prompt(prompt, replaced, remain, include_translation=True):
+def illust_prompt(prompt, replaced, remain, include_translation=True, message: Union[Literal[None], CQMessage] = None):
     tmp = []
     RT = RichText(Keyword("texts"), width=620, fontSize=None,
                   autoSplit=False, imageLimit=(600, 400))
     for i in replaced:
         chn = RT.render(texts=["<"+i+">"], fontSize=36,
-                        fill=(128, 0, 0), bg=(255, 255, 255))
+                        fill=(0, 30, 60), bg=(180, 223, 223))
         if(include_translation):
             eng = RT.render(texts=["\n("+replaced[i]+")"],
                             fill=(180, 120, 150), bg=(255,)*3, fontSize=18)
-            tmp.append(RT.render(texts=[chn, eng]))
+            tmp.append(Column([chn, eng], borderWidth=3).render())
         else:
             tmp.append(chn)
     if(remain):
-        tmp.append(RT.render(texts=["没有翻译："+remain], fill=(
-            220, 150, 180), bg=(255, 255, 255), fontSize=25))
+        texts = ["没有翻译："+remain]
+        all_translations = get_prompt_translations(message=message)
+        mx = None
+        for k, v in all_translations.items():
+            score = LCS(k, remain).common_ratio, k
+            if((mx is None) or (score > mx)):
+                mx = score
+            score = LCS(v, remain).common_ratio, k
+            if((mx is None) or (score > mx)):
+                mx = score
+        s, k = mx
+        v = all_translations[k]
+        texts.append("你想要的可能是: %s(%s), 或者尚未收录"%(k, v))
+        tmp.append(RT.render(texts=texts, fontSize=30, bg=(255, 180, 200), fill=(128, 0, 64)))
     if(prompt):
         tmp.append(RT.render(texts=[prompt], fontSize=30))
     tmp.sort(key=lambda x: x.size[1])
-    gr = Grid(tmp, bg=(255,)*3, borderWidth=5, autoAspectRatio=0.15)
+    gr = Grid(tmp, bg=(255,)*3, borderWidth=5, autoAspectRatio=0.05)
     return gr.render()
 
 
@@ -441,6 +530,40 @@ def run_report_performance(message: CQMessage):
         simple_send(mes)
 
 
+sent_image = dict()
+
+
+def _on_reload() -> Tuple[Tuple, Dict]:
+    return tuple(), {"sent_image": sent_image}
+
+
+def _on_after_reload(*args, **kwargs):
+    global sent_image
+    if("sent_image" in kwargs):
+        sent_image = kwargs["sent_image"]
+
+
+def show_partition_for_inpaint(orig_image, selected=None):
+    pass
+
+
+def run_inpaint(message, prompt, guidance=None, strength=None, parts=None):
+    if(strength is None):
+        strength = 0.65
+    else:
+        strength = float(strength)
+        strength = max(0, min(1, strength))
+    if(guidance is None):
+        guidance = 8/strength
+    else:
+        guidance = float(guidance)
+    imgtype, orig_image = message.get_sent_images()[0]
+    if(parts is None):
+        simple_send("请指定分区")
+    else:
+        pass
+
+
 def run_img2img(message: CQMessage, prompt, guidance=None, strength=None, orig_image=None):
     if(strength is None):
         strength = 0.65
@@ -456,7 +579,7 @@ def run_img2img(message: CQMessage, prompt, guidance=None, strength=None, orig_i
 
     bio = img2bio(orig_image)
     files = {"data": bio}
-    prompt, replaced, remain = process_prompt(prompt)
+    prompt, replaced, remain = process_prompt(prompt, message=message)
 
     success, eta = get_diffusion_eta(n=strength)
     if(success):
@@ -468,8 +591,10 @@ def run_img2img(message: CQMessage, prompt, guidance=None, strength=None, orig_i
     success, response = invoke_api(
         message, "img2img", prompt, files=files, guidance=guidance, strength=strength)
     if(success):
-        simple_send([bytes2img(response.content),
-                     illust_prompt(prompt, replaced, remain)])
+        img = bytes2img(response.content)
+        sent_image[message.sender.id] = img
+        simple_send([img,
+                     illust_prompt(prompt, replaced, remain), message.construct_reply()])
     else:
         simple_send("失败%s" % response)
 
@@ -483,8 +608,8 @@ def run_interp(message: CQMessage, prompt0, prompt1, aspect_ratio=None, guidance
         guidance = 15
     else:
         guidance = float(guidance)
-    prompt0, replaced0, remain0 = process_prompt(prompt0)
-    prompt1, replaced1, remain1 = process_prompt(prompt1)
+    prompt0, replaced0, remain0 = process_prompt(prompt0, message=message)
+    prompt1, replaced1, remain1 = process_prompt(prompt1, message=message)
     multiplier = 2.5
     success, eta = get_diffusion_eta(n=multiplier)
     if(success):
@@ -508,14 +633,15 @@ def run_interp(message: CQMessage, prompt0, prompt1, aspect_ratio=None, guidance
             else:
                 simple_send("获取图片失败")
                 return
-        gif = make_gif(imgs, fps=1, frame_area_sum=1e7)
+        n = len(imgs)
+        gif = make_gif(imgs, fps=max(1, int(n/2.5)), frame_area_sum=1e7)
         message.send_forward_message(for_messages)
         simple_send(gif)
     else:
         simple_send("失败%s" % response)
 
 
-def run_txt2img(message: CQMessage, prompt, aspect_ratio=None, guidance=None, batch=None):
+def run_txt2img(message: CQMessage, prompt, aspect_ratio=None, guidance=None, batch=None, ex_neg=None):
     if(aspect_ratio is None):
         aspect_ratio = 9/16
     else:
@@ -526,7 +652,7 @@ def run_txt2img(message: CQMessage, prompt, aspect_ratio=None, guidance=None, ba
         batch = 1
     else:
         batch = int(batch)
-    prompt, replaced, remain = process_prompt(prompt)
+    prompt, replaced, remain = process_prompt(prompt, message=message)
     success, eta = get_diffusion_eta(n=batch)
     if(success):
         pr_img = illust_prompt(prompt, replaced, remain)
@@ -540,13 +666,13 @@ def run_txt2img(message: CQMessage, prompt, aspect_ratio=None, guidance=None, ba
     response = "batch<=0"
     for i in range(batch):
         success, response = invoke_api(
-            message, "txt2img", prompt, aspect=aspect_ratio, guidance=guidance)
+            message, "txt2img", prompt, aspect=aspect_ratio, guidance=guidance, ex_neg=ex_neg)
         if(success):
             im = bytes2img(response.content)
             imgs.append(im)
-            # simple_send(im)
+            sent_image[message.sender.id] = im
     if(imgs):
-        simple_send(imgs+[illust_prompt(prompt, replaced, remain)])
+        simple_send(imgs+[message.construct_reply()])
     else:
         simple_send("生成失败：%s" % response)
 
@@ -578,6 +704,22 @@ def cmd_img2img(message: CQMessage, *args, **kwargs):
     strength = kwargs.get("s") or kwargs.get("strength")
     guidance = kwargs.get("g") or kwargs.get("guidance")
     return run_img2img(message, " ".join(args), strength=strength, guidance=guidance)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/完善画图", opts={"-guidance", "-strength", "-s", "-g"})
+def cmd_enhance_img(message: CQMessage, *args, **kwargs):
+    if(message.sender.id in sent_image):
+        orig_image = sent_image[message.sender.id]
+    else:
+        simple_send("还未画过图哟")
+        return
+    strength = kwargs.get("s") or kwargs.get("strength")
+    guidance = kwargs.get("g") or kwargs.get("guidance")
+
+    return run_img2img(message, " ".join(args), strength=strength, guidance=guidance, orig_image=orig_image)
 
 
 @receiver
@@ -619,10 +761,43 @@ def cmd_interp(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/画图", opts={"-aspect_ratio", "-a", "-aspect", "-guidance", "-g", "-宽", "-n", "-batch"})
+@command("/画图debug ", opts={"-neg", "-g", "-a"}, ls_opts={"-neg"})
+def cmd_txt2img1(message: CQMessage, *args, **kwargs):
+    prompts = " ".join(args)
+    simple_send("kwargs:" + str(kwargs))
+    neg_prompts = " ".join(kwargs.get("neg", []))
+    aspect_ratio = kwargs.get("a")
+    guidance = kwargs.get("guidance") or kwargs.get("g")
+    # batch = kwargs.get("n") or kwargs.get("batch")
+    return run_txt2img(message, prompts, aspect_ratio=aspect_ratio, guidance=guidance, ex_neg=neg_prompts)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/自定义标签|/标签简写|/标签简化|/简化标签", opts={})
+def cmd_custom_tags(message: CQMessage, *args, **kwargs):
+    uid = message.sender.id
+    custom_translations = user_tag_db.get(uid, {})
+    if(args):
+        key = args[0]
+        value = " ".join(args[1:])
+        custom_translations[key] = value
+    user_tag_db[uid] = custom_translations
+    im = illust_prompt("", custom_translations, "")
+    simple_send(im)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/画图 ", opts={"-aspect_ratio", "-a", "-aspect", "-guidance", "-g", "-宽", "-n", "-batch", "-neg"}, ls_opts={"-neg"})
 def cmd_txt2img(message: CQMessage, *args, **kwargs):
     aspect_ratio = kwargs.get("a") or kwargs.get(
         "aspect") or kwargs.get("aspect_ratio") or kwargs.get("宽")
     guidance = kwargs.get("guidance") or kwargs.get("g")
     batch = kwargs.get("n") or kwargs.get("batch")
-    return run_txt2img(message, " ".join(args), aspect_ratio=aspect_ratio, guidance=guidance, batch=batch)
+    ex_neg = kwargs.get("neg")
+    if(ex_neg is not None):
+        ex_neg = ", ".join(ex_neg)
+    return run_txt2img(message, " ".join(args), aspect_ratio=aspect_ratio, guidance=guidance, batch=batch, ex_neg=ex_neg)

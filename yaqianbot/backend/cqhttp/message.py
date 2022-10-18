@@ -175,6 +175,8 @@ class CQMessage(Message):
         group_id = self.raw.group_id
         ret = cqhttp._bot.sync.get_group_member_list(self_id = self_id, group_id = group_id)
         return ret
+    def construct_reply(self):
+        return MSEG.reply(self.raw["message_id"])
     @classmethod
     def fromdict(cls, d):
         return cls.from_cq(d)
