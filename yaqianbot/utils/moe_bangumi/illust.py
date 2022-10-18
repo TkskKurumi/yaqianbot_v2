@@ -5,6 +5,8 @@ import re
 from .requests import get_image
 from PIL import Image
 from datetime import timedelta
+from os import path
+from .paths import illust_cache_pth, ensure_directory
 img_expire_after = timedelta(days = 180)
 def kwget(key, default = None):
     def f(**kwargs):
@@ -12,11 +14,19 @@ def kwget(key, default = None):
         return kwargs.get(key, default)
     return f
 def illust_torrent(t: Torrent, size=384, style="light", extra = None):
+    if("_id" in t):
+        cache_key = "illut_torrent-%s-%s-%s"%(t._id, style, size)
+    else:
+        cache_key = None
+    if(cache_key is not None):
+        _cache_pth = path.join(illust_cache_pth, cache_key+".png")
+        if(path.exists(_cache_pth)):
+            return Image.open(_cache_pth)
     global img_expire_after
     intro = t.introduction
-    # print(t.introduction)
-    
     is_dark = style == "dark"
+    
+    
     columns = []
     
     pattern = r'<img src="(.+?)"'
@@ -49,7 +59,10 @@ def illust_torrent(t: Torrent, size=384, style="light", extra = None):
         columns.append(ex)
     ret = Column(columns)
     ret = CompositeBG(ret, BG)
-    return ret.render()
+    ret = ret.render()
+    ensure_directory(_cache_pth)
+    ret.save(_cache_pth)
+    return ret
 
 
 if(__name__ == "__main__"):

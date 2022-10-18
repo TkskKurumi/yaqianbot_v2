@@ -1,4 +1,4 @@
-from ast import Index
+
 from collections import defaultdict
 from ..backend.cqhttp.message import CQMessage
 from ..backend import base_message as Message
@@ -8,6 +8,7 @@ from ..backend.paths import mainpth
 from ..utils import after_match
 from ..utils.myhash import base32
 from ..utils.jsondb import jsondb
+from ..utils.lvldb import TypedLevelDB
 from ..utils.algorithms.lcs import lcs as LCS
 from os import path
 from dataclasses import dataclass, asdict
@@ -15,11 +16,21 @@ from ..utils.myhash import base32
 import random
 from ..utils.algorithms import lower_bound
 from .plg_admin import link
+from . import plg_chatbot_record
+from ..utils.candy import simple_send
+import time
+
 
 @dataclass
 class Chat:
     query: str
     response: list
+
+    def __hash__(self):
+        return self.hashed()
+
+    def __eq__(self, other):
+        return self.query == other.query and self.response == other.query
 
     def hashed(self):
         return base32(self.asdict())
@@ -28,7 +39,15 @@ class Chat:
         return asdict(self)
 
     @classmethod
+    def from_any(cls, D):
+        if(isinstance(D, Chat)):
+            return D
+        else:
+            return cls.fromdict(D)
+
+    @classmethod
     def fromdict(cls, D):
+
         return cls(**D)
 
     def calc(self, query, debug=False):
@@ -44,21 +63,30 @@ class Chat:
         key, value = self.item()
         db[key] = value
 
+
 chatbot_img_path = path.join(mainpth, "chatbot", "images")
 saved_chats = jsondb(path.join(mainpth, "chatbot", "chat"),
                      method=lambda x: str(x)[:3])
 pending_chats = jsondb(path.join(mainpth, "chatbot", "pending_chat"),
-                     method=lambda x: str(x)[:3])
+                       method=lambda x: str(x)[:3])
 
-def get_chat(query, db=saved_chats, debug=False, EPS=0.25):
+
+def get_chat(query, db=saved_chats, debug=False, EPS=0.1):
     chats = []
+    if(debug):
+        meow = []
     weights = []
     for k, v in db.items():
-        chat = Chat.fromdict(v)
-        score = chat.calc(query, debug=debug)
+        chat = Chat.from_any(v)
+        score = chat.calc(query)
         if(score > EPS):
             chats.append(chat)
             weights.append(score**3)
+        if(debug):
+            meow.append((score, chat))
+    if(debug):
+        meow.sort(key=lambda x:-x[0])
+        print(meow[:10])
     if(not chats):
         return None
     return weighted_choice(chats, weights)
@@ -95,15 +123,20 @@ def weighted_choice(choices, weights):
     rnd = random.random()*weight_sum
     idx = lower_bound(prefix_sum, rnd)
     return choices[idx]
+
+
 def replace(message_ls, *args):
     ret = []
     for idx, i in enumerate(message_ls):
         for j in range(0, len(args), 2):
             src = args[j]
             dst = args[j+1]
-            i = i.replace(src, dst)
+            if(isinstance(i, str)):
+                i = i.replace(src, dst)
         ret.append(i)
     return ret
+
+
 def show_pending(message, key=None):
     if(key is None):
         ls = list(pending_chats)
@@ -111,13 +144,14 @@ def show_pending(message, key=None):
     chat = pending_chats[key]
     chat = Chat.fromdict(chat)
     mes = ["问:\n"]
-    if(isinstance(chat.query,str)):
+    if(isinstance(chat.query, str)):
         mes.append(chat.query)
     else:
         mes.append(chat.query)
     mes.append("\n答\n")
     mes.extend(chat.response)
     mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
+
     @is_su
     def accept(message: Message):
         nonlocal key
@@ -127,6 +161,7 @@ def show_pending(message, key=None):
             message.response_sync("问答被收录！")
         else:
             message.response_sync("没有此项问答")
+
     @is_su
     def decline(message: Message):
         nonlocal key
@@ -138,21 +173,37 @@ def show_pending(message, key=None):
             message.response_sync("没有此项问答")
     accept_link = link("accept "+key, accept)
     decline_link = link("decline "+key, decline)
-    meow = ["\n输入%s以确认加入问答; 输入%s以取消加入问答"%(accept_link, decline_link)]
+    meow = ["\n输入%s以确认加入问答; 输入%s以取消加入问答" % (accept_link, decline_link)]
     message.response_sync(mes+meow)
+
+
 def response_when(message, when):
     chat = get_chat(when)
     if(chat is not None):
         mes = chat.response
         mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
         message.response_sync(mes)
+
+
+def send_chat(message, chat):
+    mes = chat.response
+    mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
+    simple_send(mes)
+
+
 @receiver
 @threading_run
 @on_exception_response
 @is_ated
 def response_ated(message):
+    
     if(message.plain_text):
-        chat = get_chat(message.plain_text)
+        database = {}
+        database.update(get_db_from_group(message.group, max_nocache = 150))
+        # print(get_db_from_group(message.group, max_nocache = 50))
+        for i, j in saved_chats.items():
+            database[i]=j
+        chat = get_chat(message.plain_text, db=database, debug=False)
         # message.response_sync(message.plain_text)
         if(chat is not None):
             mes = chat.response
@@ -164,24 +215,114 @@ def response_ated(message):
                 mes = chat.response
                 mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
                 message.response_sync(mes)
+
+
 @receiver
 @threading_run
 @on_exception_response
 @command("/审核问答", opts={})
 def cmd_view_pending_chat(message):
     show_pending(message)
+
+
+record_chat_cache = {}
+
+
+def mes_pair_as_chat(mesi, mesj):
+    key = (mesi.raw.get("message_seq"), mesj.raw.get("message_seq"))
+    if(key in record_chat_cache):
+        return 1, key, record_chat_cache[key]
+    else:
+        q = mesi.plain_text
+        r = mesj.get_mseg_list()
+        if(not r):
+            return None
+        ret = Chat(q, r)
+        record_chat_cache[key] = ret
+        return 0, key, ret
+
+
+def get_db_from_group(group, max_nocache=100):
+    com, buf = plg_chatbot_record.get_mes_record(group)
+    messages = com+buf
+    messages = messages[::-1]
+    prune = max_nocache
+    ret = {}
+    
+    for jdx, j in enumerate(messages[:-1]):
+        # j = messages[idx+1]
+        i = messages[jdx+1]
+        mesi = CQMessage.from_cq(i)
+        if(not mesi.plain_text):
+            continue
+        mesj = CQMessage.from_cq(j)
+        j_text = mesj.plain_text
+        if(len(j_text)>300):
+            continue
+        chat = mes_pair_as_chat(mesi, mesj)
+        if(not chat):
+            continue
+        is_cached, key, chat = chat
+        ret[key] = chat
+        prune -= 1-is_cached
+        if(prune <= 0):
+            print("Info: Lazy processing Chat record for group %s, %d/%d is processed"%(group, jdx, len(messages)-1))
+            break
+    return ret
+
+
+@receiver
+@threading_run
+@on_exception_response
+@is_su
+@command("/测试问答", opts={"-g"})
+def cmd_chatbot_test_record_chat(message: CQMessage, *args, **kwargs):
+    contents = " ".join(args)
+    if("g" in kwargs):
+        group = kwargs["g"]
+    else:
+        group = message.group
+    ret_messages = []
+
+    st = time.time()
+    dummy_db = get_db_from_group(group)
+    ed = time.time()
+    elapsed = ed-st
+    a, b = len(dummy_db), elapsed
+    c = a/b
+    ret_messages.append(
+        "Loaded %.1f message records in %.1f seconds, %.1f/sec" % (a, b, c))
+
+    st = time.time()
+
+    chat = get_chat(contents, db=dummy_db, EPS=0.1, debug = True)
+    if(chat is None):
+        simple_send("没有回答")
+    else:
+        send_chat(message, chat)
+
+    ed = time.time()
+    elapsed = ed-st
+    a, b = len(dummy_db), elapsed
+    c = a/b
+    ret_messages.append(
+        "\nCaculated %.1f message records in %.1f seconds, %.1f/sec" % (a, b, c))
+    simple_send(ret_messages)
+
+
 @receiver
 @threading_run
 @on_exception_response
 @command("/添加问答", opts={})
-def cmd_add_custom_chat(message:CQMessage, *args, **kwargs):
+def cmd_add_custom_chat(message: CQMessage, *args, **kwargs):
     texts = []
     response = []
     for i in args:
         if(i == "带图"):
-            ls = message.get_sent_images(rettype = "file", savepath = chatbot_img_path)
+            ls = message.get_sent_images(
+                rettype="file", savepath=chatbot_img_path)
             for idx, i in enumerate(ls):
-                ls[idx]=path.join("%chatbot_img_path%", path.basename(i))
+                ls[idx] = path.join("%chatbot_img_path%", path.basename(i))
             response.extend(ls)
         else:
             texts.append(i)
@@ -193,6 +334,7 @@ def cmd_add_custom_chat(message:CQMessage, *args, **kwargs):
     chat = Chat(query, response)
     chat.savetodb(pending_chats)
     show_pending(message, chat.hashed())
+
 
 if(__name__ == '__main__'):
     import tempfile

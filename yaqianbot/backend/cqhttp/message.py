@@ -1,7 +1,9 @@
+from functools import partial
 import html
 from typing import Dict
 from aiocqhttp import Event
 import re
+from easydict import EasyDict as edict
 from aiocqhttp.message import MessageSegment as MSEG
 from ..bot_threading import threading_run
 from ..base_message import User, Message
@@ -19,7 +21,8 @@ import shutil
 from ..configure import bot_config
 
 def img_b64(im, limit_size=1e6):
-
+    if(im.mode == "P"):
+        im = im.convert("RGBA")
     if("A" in im.mode):
         format = "PNG"
     else:
@@ -147,10 +150,33 @@ class CQUser(User):
         id = str(sender.get("user_id"))
         return cls(id=id, name=name, from_group=str(from_group))
 
-
+class CQApi:
+    def __init__(self, **kwargs):
+        self.kwargs = kwargs
+    def __getattr__(self, name):
+        api = getattr(cqhttp._bot.sync, name)
+        return partial(api, **self.kwargs)
 class CQMessage(Message):
     def asdict(self):
         return self.raw
+    def get_nickname_by_id(self, uid):
+        uid = str(uid)
+        if(uid == self.sender.id):
+            return self.sender.name
+        if("group_id" in self.raw):
+            for i in self.get_group_member_list():
+                if(uid == str(i["user_id"])):
+                    return i.get("nickname") or i.get("card")
+        raise KeyError(uid)
+    def get_group_member_list(self):
+        self_id = self.raw.self_id
+        if("group_id" not in self.raw):
+            raise Exception("Not in group chat")
+        group_id = self.raw.group_id
+        ret = cqhttp._bot.sync.get_group_member_list(self_id = self_id, group_id = group_id)
+        return ret
+    def construct_reply(self):
+        return MSEG.reply(self.raw["message_id"])
     @classmethod
     def fromdict(cls, d):
         return cls.from_cq(d)
@@ -175,6 +201,11 @@ class CQMessage(Message):
             raise Exception("only supports send_foward_message for group")
         kwargs["messages"] = messages
         return cqhttp._bot.sync.send_group_forward_msg(**kwargs)
+    def get_mseg_list(self):
+        mes = self.raw.message
+        if(isinstance(mes, str)):
+            mes = mes_str2arr(html.unescape(mes))
+        return mes
     def get_rich_array(self):
         mes = self.raw.message
         if(isinstance(mes, str)):
@@ -188,8 +219,12 @@ class CQMessage(Message):
                 t = data["text"]
                 ret.append(t)
             elif(type == "image"):
+                url = data.get("url")
+                if(not url.strip()):
+                    print("Warning: unrecognized Image CQ Segment", data)
+                    continue
                 im = requests.get_image(data["url"])[1]
-                # im = sizefit.fit_shrink(im, w*0.9, h*0.5)
+                
                 ret.append(im)
         return ret
         # return super().get_rich_array()
@@ -206,7 +241,10 @@ class CQMessage(Message):
 
     @classmethod
     def from_cq(cls, event):
-
+        try:
+            sender = event.sender
+        except AttributeError:
+            event = edict(event)
         ated = list()
         self_id = str(event.get("self_id"))
         if("group_id" in event):
@@ -240,6 +278,9 @@ class CQMessage(Message):
         ret = cls(sender=sender, pics=pics, ated=ated,
                   plain_text=plain_text, group=group, raw=event, self_id=self_id)
         ret.update_rpics()
+
+        ret.api = CQApi(self_id = event.self_id)
+
         return ret
 
     def get_sent_images(self, rettype="image", **kwargs):

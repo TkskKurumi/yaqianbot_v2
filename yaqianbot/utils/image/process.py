@@ -1,15 +1,17 @@
 from PIL import Image, ImageDraw, ImageFilter
 import numpy as np
 from .colors import Color
+from . import colors
 from math import exp
 from typing import Literal, Any
 
 
 def shadow(img, radius=1, color: Any = Color.from_any("BLACK"), padding=True, sharpness=2, debug=False):
     w, h = img.size
+    bgc = colors.image_border_color(img).get_rgba()
     if(padding):
         tmp = Image.new("RGBA", (w+int(radius*4), h +
-                        int(radius*4)), (0, 0, 0, 0))
+                        int(radius*4)), bgc)
         tmp.paste(img, box=(int(radius*2), int(radius*2)))
         img = tmp
         w, h = img.size
@@ -32,7 +34,7 @@ def shadow(img, radius=1, color: Any = Color.from_any("BLACK"), padding=True, sh
     if(debug):
         from .print import image_show_terminal
         image_show_terminal(img, caption="shadow img")
-    ret = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ret = Image.new("RGBA", (w, h), bgc)
     if(color is not None):
         color = Image.new("RGBA", (w, h), color.get_rgba())
     else:

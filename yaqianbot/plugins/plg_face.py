@@ -11,6 +11,7 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from ..utils import image, algorithms
 from ..utils.image.sizefit import fit_shrink, fix_width
+from math import pi as PI
 from ..utils.image import sizefit, colors
 from ..utils.image import gif_frames_duration, background
 from pil_functional_layout.widgets import Column, RichText, Text
@@ -24,7 +25,8 @@ from ..backend.requests import get_image
 from ..utils.image import sizefit
 from ..utils.image.colors import Color
 import math
-
+from ..utils.candy import simple_send
+from ..utils.geometry.elements import Point2d
 '''
 @receiver
 @threading_run
@@ -88,7 +90,7 @@ def cmd_face_test(message: CQMessage):
     if(w*h > mx):
         img = sizefit.area(img, mx)
         w, h = img.size
-    for i in range(100):
+    for i in range(300):
         x, y = random.randrange(w), random.randrange(h)
         points.append((x, y))
     kdt = KDT()
@@ -232,9 +234,35 @@ hanzi2color = {
     "橙": "ORANGE",
     "黄": "YELLOW",
     "透明": "rgba(0,0,0,0)",
-    "MIKU": "rgb(57, 197, 187)"
+    "MIKU": "rgb(57, 197, 187)",
+    "青": "CYAN",
+    "紫": "PURPLE",
+    "灰": "GRAY",
+
 }
 match_hanzi_color = "|".join(hanzi2color)
+
+
+@receiver
+@threading_run
+@startswith("(%s)+旗$" % match_hanzi_color)
+@on_exception_response
+def cmd_color_flag(message: CQMessage):
+    colors = message.plain_text
+    colors = re.findall("(%s)" % match_hanzi_color, colors)
+    colors = [Color.from_any(hanzi2color[i]) for i in colors]
+    w, h = 512, 288
+    im = Image.new("RGB", (w, h))
+    dr = ImageDraw.Draw(im)
+    hs = []
+    for i in range(len(colors)):
+        hs.append(int(h*(i+1)/len(colors)))
+    top = 0
+    for idx, i in enumerate(colors):
+        bot = hs[idx]
+        dr.rectangle((0, top, w, bot), fill=i.get_rgb())
+        top = bot
+    simple_send(im)
 
 
 @receiver
@@ -366,12 +394,12 @@ def cmd_gridskirt(message, *args, **kwargs):
     n_colors = 9
     cs = colors.image_colors(img, n_colors)
     if(kwargs.get("h") or kwargs.get("hshift")):
-        hshift =int(kwargs.get("h") or kwargs.get("hshift"))
+        hshift = int(kwargs.get("h") or kwargs.get("hshift"))
         _cs = []
         for i in cs:
-            hue,s,l=i.get_hsl()
-            hue = (hue+hshift)%360
-            _cs.append(colors.Color.from_hsl(hue,s,l))
+            hue, s, l = i.get_hsl()
+            hue = (hue+hshift) % 360
+            _cs.append(colors.Color.from_hsl(hue, s, l))
         cs = _cs
     #colors_big_w = colors[:3]
     #colors_big_H = colors[3:6]
@@ -388,7 +416,6 @@ def cmd_gridskirt(message, *args, **kwargs):
         _sin = math.sin(angle/180*math.pi)
         ret = (byx*_cos+byy*_sin)/scale
         return (ret % k).astype(np.uint16)
-
 
     eye = np.eye(n_colors)
 
@@ -447,6 +474,57 @@ def cmd_grids(message, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
+@command("[!/]?星星", opts={})
+def cmd_face_stars(mes, *args, **kwargs):
+    star = RichText(["⭐"], width=233, fontSize=48).render()
+    area = 1e5
+
+    def angle_minus(a, b):
+        ret = a-b
+        while(ret > 180):
+            ret -= 360
+        while(ret < -180):
+            ret += 360
+        return ret
+
+    def add_star(img, alpha, theta):
+        nonlocal star, area
+        img = sizefit.area(img, area)
+        sizer = angle_minus(alpha, 90)
+        sizer = 1.5 - abs(sizer/180)
+        st = sizefit.resize_ratio(star, sizer)
+        w, h = img.size
+        ctr = Point2d(w/2, h/5)
+        rot = Point2d(w/2/1.4*math.cos(alpha/180*PI), h/5/1.4 *
+                      math.sin(alpha/180*PI)).rotate_by_angle(theta/180*PI)
+        p = ctr+rot
+        ll = (p-Point2d(*st.size)/2).intxy
+        img.paste(st, box=ll, mask=st)
+        return img
+    imgtype, img = mes.get_sent_images()[0]
+    if(imgtype == "image/gif"):
+        frames, fps = image.gif_frames_fps(img)
+    else:
+        frames = [img]*20
+        fps = 20
+    frms = []
+    nfrms = len(frames)
+    duration = nfrms/fps
+    nloops = int(max(1, duration*1.2))
+    for idx, img in enumerate(frames):
+        alpha = idx/nfrms*360*nloops
+        frm = add_star(img, alpha, -15)
+        frm = add_star(frm, alpha+120, -15)
+        frm = add_star(frm, alpha+240, -15)
+        frms.append(frm)
+    gif = make_gif(frms, fps=fps, frame_area_sum=area*nfrms)
+    # simple_send(gif)
+    mes.response_sync(gif)
+
+
+@receiver
+@threading_run
+@on_exception_response
 @command("鲁迅说", opts={})
 def cmd_luxunrt(message, *args, **kwargs):
     mes = message.raw.message
@@ -487,3 +565,31 @@ def cmd_luxunrt(message, *args, **kwargs):
     up = (h-hh)
     luxun.paste(RT, box=(le, up), mask=RT)
     message.response_sync(luxun)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/提取轮廓", opts={})
+def cmd_contour(message, *args, **kwargs):
+    # import numpy as np
+    # from PIL import Image
+    im = message.get_sent_images()[0][-1].convert("RGB")
+    arr = np.asarray(im)
+    h, w = arr.shape[:2]
+    sz = 2
+    arrs = []
+    for x in range(sz):
+        for y in range(sz):
+            tmp = arr[y:y+h-sz, x:x+w-sz]
+            arrs.append(tmp)
+    arrs = np.array(arrs).astype(np.float32)
+    avg = np.mean(arrs, axis=0)
+    diff2 = (arrs-avg)**2
+    diff = np.sum(diff2, axis=(0, -1))
+    diff = np.sqrt(diff)
+    mn, mx = np.min(diff), np.max(diff)
+    norm = (diff-mn)/(mx-mn)
+    arr_grey = (255-norm*255).astype(np.uint8)
+    im = Image.fromarray(arr_grey)
+    simple_send(im)

@@ -6,6 +6,7 @@ from ..backend.cqhttp import CQMessage
 from ..backend.cqhttp import _bot
 from ..utils.pyxyv.illust import Illust, Ranking, _getRankingToday, get_ranking
 from ..utils.pyxyv.visualize import illust_listing
+from ..utils.pyxyv import rand_illust
 import re
 import random
 from datetime import timedelta
@@ -51,10 +52,33 @@ def rand_img(message: CQMessage=None):
     if(message):
         last_illust[message.sender] = ill
     return random.choice(imgs)
+def rand_landscape(message: CQMessage=None):
+    target_ratio = 16/9
+    def f_ratio(r):
+        nonlocal target_ratio
+        if(r>target_ratio):
+            return target_ratio/r
+        else:
+            return r/target_ratio
+    candidates = []
+    for i in range(10):
+        illust = rand_illust()
+        page = random.choice(illust.get_pages(quality = "regular"))
+        w, h = Image.open(page).size
+        r = w/h
+        score = f_ratio(r)
+        candidates.append((score, page, illust))
+    best = max(candidates)
+    score, page, ill = best
+    if(message):
+        last_illust[message.sender] = ill
+    return page
 
+    
 
 def cmd_pixiv_rank(message, *args, **kwargs):
-    page = kwargs.get("page", 1)-1
+    page = kwargs.get("page", None) or kwargs.get("p", None) or 1
+    page = int(page) - 1
     st = page*20
     ed = (page+1)*20
 
@@ -82,7 +106,7 @@ def cmd_pixiv_view(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/pixiv", opts ={"-mode", "-page", "-date", "-m", "-d"})
+@command("/pixiv", opts ={"-mode", "-page", "-date", "-m", "-d", "-p"})
 def cmd_pixiv(message: CQMessage, *args, **kwargs):
     if(args):
         arg0 = args[0]

@@ -1,7 +1,7 @@
 from ..backend import Message
 from ..backend import scheduled, receiver
 from ..backend.receiver_decos import threading_run, on_exception_response, command
-from ..utils.moe_bangumi.search import search as moe_search
+from ..utils.moe_bangumi.search import search_tagged as moe_search
 from ..utils.moe_bangumi.fetch import TorrentPage, Torrent
 from ..utils.moe_bangumi.illust import illust_torrent
 from .plg_admin import link_send_content
@@ -66,10 +66,16 @@ def cmd_bangumi_search(message: Message, *args, page=1, **kwargs):
     one_page_cnt = 16
     st = (page-1)*one_page_cnt
     ed = page*one_page_cnt
+    le = len(torrent_ls.torrents)
     for torrent in torrent_ls.torrents[st:ed]:
         title = torrent.title
         with print_time("illust "+title):
             img = illust_torrent(torrent, extra=ex)
         imgs.append(img)
-    ret = Grid(imgs).render().convert("RGB")
+    elapsed = time.time()-start_search
+    n = len(torrent_ls.torrents)
+    ret = []
+    ret.append(Grid(imgs).render().convert("RGB"))
+    ret.append("用时%.1f秒搜索%d项番剧(%d项/秒)"%(elapsed, n, n/elapsed))
     message.response_sync(ret)
+    
