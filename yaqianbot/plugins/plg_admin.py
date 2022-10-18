@@ -49,7 +49,14 @@ def cmd_admin_reload(message:Message, *args, **kwargs):
     for plg in args:
         for name, module in list(sys.modules.items()):
             if(name.endswith(plg)):
+                if(hasattr(module, "_on_reload") and callable(module._on_reload)):
+                    has_cb = True
+                    reload_args, reload_kwargs = module._on_reload()
+                else:
+                    has_cb = False
                 importlib.reload(module)
+                if(has_cb):
+                    module._on_after_reload(*reload_args, **reload_kwargs)
                 f = getattr(module, "__file__", "unknownfile")
                 mes.append("reloaded %s (%s)"%(name, f))
     simple_send("\n".join(mes))
