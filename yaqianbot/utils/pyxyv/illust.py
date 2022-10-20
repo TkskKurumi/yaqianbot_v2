@@ -39,6 +39,8 @@ class Illust:
         try:
             j = json.loads(j)["illust"]
         except Exception as e:
+            import os
+            os.makedirs(temppth, exist_ok=True)
             debugpth = path.join(temppth, "debug.html")
             with open(debugpth, "w", encoding="utf-8") as f:
                 f.write(html)
@@ -85,6 +87,7 @@ class BaseListing:
     def __init__(self, ids=None, items=None):
         self.ids = ids or list()
         self.items = items or list()
+
 
 
 class ListingElement:
@@ -139,7 +142,32 @@ def get_ranking(date=None, mode="weekly", start=0, end=20):
         ret.ids.append(id)
     return ret
 
-
+class UserIllusts(BaseListing):
+    def __init__(self, user_id):
+        url = "https://www.pixiv.net/ajax/user/%s/profile/all"%user_id
+        r = requests.get(url)
+        j = r.json()
+        if(j["error"]):
+            raise Exception(j["message"])
+        body = j["body"]
+        illusts = body["illusts"]
+        self.ids = list(illusts)
+        self.items = []
+        for id in self.ids:
+            item = ListingElement(id)
+            self.items.append(item)
+class Related(BaseListing):
+    def __init__(self, orig_id):
+        headers = {"referer": "https://www.pixiv.net/artworks/%s"%orig_id}
+        url=r"https://www.pixiv.net/ajax/illust/%s/recommend/init?limit=%d&lang=zh"%(orig_id, 18)
+        
+        j = requests.get(url, headers=headers).json()
+        print(url, j)
+        self.ids = j['body']['nextIds']
+        self.items = []
+        for id in self.ids:
+            item = ListingElement(id)
+            self.items.append(item)
 class Ranking(BaseListing):
     def __init__(self, date=None, mode="weekly", page=1):
         if(date is None):
@@ -154,7 +182,7 @@ class Ranking(BaseListing):
             "content": "illust",
             "format": "json",
             "p": page,
-            "data": date
+            "date": date
         }
         url = 'https://www.pixiv.net/ranking.php?'+urlencode(params)
         # print(url)
