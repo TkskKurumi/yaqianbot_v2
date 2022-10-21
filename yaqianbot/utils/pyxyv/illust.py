@@ -74,13 +74,14 @@ class Illust:
         ret = []
 
         for i in range(start, end):
-            url = self.urls[quality].replace("_p0_", "_p%d_" % i)
+            url = self.urls[quality].replace("_p0", "_p%d" % i)
             referer = "https://www.pixiv.net/artworks/%s" % self.id
             headers = {"referer": referer}
             task = create_task(requests.get_file, url, headers=headers)
             # file = requests.get_file(url, headers = headers)
             ret.append(task)
-        return [i.result() for i in ret]
+        rets = [i.result() for i in ret]
+        return rets
 
 
 class BaseListing:

@@ -48,7 +48,7 @@ def get_file(url, *args, **kwargs):
         type = type.split(";")[0]
     ext = mime2ext.get(type, '.tmp')
 
-    name = base32([url, args, kwargs])
+    name = base32([url, args, kwargs], length=20)
     pth = path.join(temppth, name+ext)
     ensure_directory(pth)
     with open(pth, "wb") as f:
