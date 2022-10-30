@@ -2,7 +2,7 @@ from . import requests
 import re
 from dataclasses import dataclass
 import json
-from .executor import create_task
+from .executor import create_task, create_pool
 from typing import List
 from datetime import datetime, timedelta
 from urllib.parse import urlencode
