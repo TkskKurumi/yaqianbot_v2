@@ -1,17 +1,28 @@
 import requests_cache
 from requests_cache.backends.sqlite import SQLiteCache
 from datetime import timedelta
-from .paths import cachepth, mime2ext, base32, temppth, ensure_directory
+from .paths import cachepth, mime2ext, base32, temppth, ensure_directory, workpth
 import os
 import tempfile
 from os import path
+import json
 cache_backend = SQLiteCache(cachepth, cache_control=True)
 sess = requests_cache.CachedSession(
     'CachedSession',
     backend=cache_backend,
-    expire_after=timedelta(minutes=20)
+    expire_after=timedelta(minutes=60*8)
 )
 
+if(path.exists(path.join(workpth, "cookies.json"))):
+    cookiejar = sess.cookies
+    with open(path.join(workpth, "cookies.json")) as f:
+        cookies_json = json.load(f)
+    for entry in cookies_json:
+        for j in ['id', 'httpOnly', 'sameSite', 'expirationDate', 'session', 'hostOnly', 'storeId']:
+            if(j in entry):
+                entry.pop(j)
+        cookiejar.set(**entry)
+    print("loaded cookie")
 request_kwargs = {}
 
 if(os.environ.get("PIXIV_PROXY")):
@@ -19,13 +30,14 @@ if(os.environ.get("PIXIV_PROXY")):
         "http": os.environ.get("PIXIV_PROXY"),
         "https": os.environ.get("PIXIV_PROXY")
     }
+    print("using proxies for PIXIV", proxies)
     request_kwargs["proxies"] = proxies
 
 
 def get(url, *args, **kwargs):
     kwa = dict(request_kwargs)  # copy to preserve
     kwa.update(kwargs)
-    return sess.get(url, *args, **kwargs)
+    return sess.get(url, *args, **kwa)
 
 
 def get_file(url, *args, **kwargs):
@@ -36,7 +48,7 @@ def get_file(url, *args, **kwargs):
         type = type.split(";")[0]
     ext = mime2ext.get(type, '.tmp')
 
-    name = base32([url, args, kwargs])
+    name = base32([url, args, kwargs], length=20)
     pth = path.join(temppth, name+ext)
     ensure_directory(pth)
     with open(pth, "wb") as f:
@@ -47,7 +59,7 @@ def get_file(url, *args, **kwargs):
 def post(url, *args, **kwargs):
     kwa = dict(request_kwargs)  # copy to preserve
     kwa.update(kwargs)
-    return sess.post(url, *args, **kwargs)
+    return sess.post(url, *args, **kwa)
 
 
 def head(url, *args, **kwargs):
