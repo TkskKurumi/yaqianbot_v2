@@ -36,6 +36,13 @@ class _lcs:
     common_len: int
     a_matched: list
     b_matched: list
+    def get_common_ratio(self, rate):
+        a = self.common_ratio_a
+        b = self.common_ratio_b
+        if((not a) or (not b)):
+            return 0
+        ret = a**rate
+        return ret*(b**(1-rate))
     def calc1(A, B, f_similarity = element_similarity):
         sa = set(A)
         sb = set(B)

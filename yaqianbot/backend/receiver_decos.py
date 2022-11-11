@@ -53,8 +53,7 @@ def command(pattern, opts, bool_opts=None, ls_opts=None):
         all_commands[func.__name__] = (pattern, func)
         @wraps(func)
         def inner(message: Message):
-            
-            text = message.plain_text
+            text = message.plain_text.strip(" ")
             match = _re.match(text)
             if(match):
                 rest = text[match.span()[1]:]

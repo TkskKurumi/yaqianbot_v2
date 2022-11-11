@@ -20,13 +20,23 @@ from io import BytesIO
 import shutil
 from ..configure import bot_config
 
+
+message_image = {}
+def mem_message_im(id, im):
+    if(len(message_image) > 256):
+        ls = list(message_image)
+        message_image.pop(ls[0])
+    message_image[str(id)] = im
+    return im
 def img_b64(im, limit_size=1e6):
     if(im.mode == "P"):
         im = im.convert("RGBA")
     if("A" in im.mode):
         format = "PNG"
+        save_kwargs = {}
     else:
         format = "JPEG"
+        save_kwargs = {"quality": 95}
     w, h = im.size
     original_w, original_h = im.size
     bio, cur_size = None, None
@@ -35,7 +45,7 @@ def img_b64(im, limit_size=1e6):
     def _save():
         nonlocal bio, im, format, cur_size, original_size
         bio = BytesIO()
-        im.resize((w, h)).save(bio, format)
+        im.resize((w, h)).save(bio, format, **save_kwargs)
         cur_size = bio.tell()
 
         if((w, h) != (original_w, original_h)):
@@ -141,7 +151,25 @@ def mes_str2arr(message):
         ret.append({"data": {"text": all_plain[-1]}, "type": "text"})
     return ret
 
-
+def any_image(message):
+    if(isinstance(message, Image.Image)):
+        return message
+    elif(isinstance(message, list)):
+        for i in message:
+            im = any_image(i)
+            if(im):
+                return im
+    elif(isinstance(message, dict)):
+        type = message.get("type")
+        data = message.get("data")
+        if(type == "image"):
+            if(isinstance(data, dict)):
+                url = data.get("url", "")
+                if(not url):
+                    return False
+                im = requests.get_image(data["url"])[1]
+                return im
+    return False
 class CQUser(User):
     @classmethod
     def from_cq(cls, sender: Dict, from_group: str):
@@ -259,6 +287,7 @@ class CQMessage(Message):
             mes = mes_str2arr(html.unescape(mes))
         pics = list()
         plain_texts = []
+        reply_mes_id = None
         for i in mes:
             type = i.get("type")
             data = i.get("data", dict())
@@ -269,7 +298,8 @@ class CQMessage(Message):
                 ated.append(str(data.get("qq")))
             elif(type == "text"):
                 plain_texts.append(data["text"])
-            else:
+            elif(type == "reply"):
+                reply_mes_id = data.get("id") or data.get("message_id")
                 pass
         # plain_text = html.unescape(event.raw_message)
         plain_text = "".join(plain_texts)
@@ -278,11 +308,22 @@ class CQMessage(Message):
         ret = cls(sender=sender, pics=pics, ated=ated,
                   plain_text=plain_text, group=group, raw=event, self_id=self_id)
         ret.update_rpics()
-
+        if(pics):
+            im = any_image(pics)
+            print("DEBUG: ", pics, im)
+            id = event.get("message_id")
+            if(id):
+                mem_message_im(id, im)
         ret.api = CQApi(self_id = event.self_id)
-
+        ret.reply_mes_id = reply_mes_id
         return ret
-
+    def get_reply_image(self):
+        if(not self.reply_mes_id):
+            print("DEBUG: no reply id", self.reply_mes_id)
+            return None
+        im = message_image.get(str(self.reply_mes_id))
+        print("DEBUG: reply im", [self.reply_mes_id, im, list(message_image)])
+        return im
     def get_sent_images(self, rettype="image", **kwargs):
         rpics = self.recent_pics
         ret = []
@@ -312,9 +353,14 @@ class CQMessage(Message):
                 args["message_type"] = "private"
             else:
                 args["message_type"] = "group"
+        im = any_image(message)
         prepare(message=prepare_message(message))
         # print(args)
         ret = cqhttp._bot.sync.send_msg(**args)
+        if(im):
+            id = ret.get("message_id")
+            if(id):
+                mem_message_im(id, im)
         return ret
 
     async def response_async(self, message, at=False, reply=False):
@@ -325,7 +371,12 @@ class CQMessage(Message):
         for key in ["message_type", "group_id", "user_id", "self_id"]:
             if(key in self.raw):
                 args[key] = self.raw[key]
+        im = any_image(message)
         prepare(message=prepare_message(message))
         # print(args)
         ret = await cqhttp._bot.send_msg(**args)
+        if(im):
+            id = ret.get("message_id")
+            if(id):
+                mem_message_im(id, im)
         return ret
