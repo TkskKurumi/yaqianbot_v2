@@ -8,3 +8,5 @@ tmp.*
 *.out
 yaqianbot/backend/files
 yaqianbot/utils/osu/files
+crawled
+tmp
