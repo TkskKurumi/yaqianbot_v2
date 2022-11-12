@@ -1,7 +1,8 @@
+import random
 
 from typing import Dict, Tuple, Union, Literal
 from PIL import Image
-
+import numpy as np
 from io import BytesIO
 from urllib.parse import urlencode
 from pil_functional_layout.widgets import RichText, Grid, Column
@@ -13,10 +14,12 @@ from ..backend.configure import bot_config
 from ..utils.candy import simple_send
 from ..utils.make_gif import make_gif
 from ..utils.lvldb import TypedLevelDB
+from ..utils.image import sizefit
 import requests
 from ..backend.paths import mainpth
 from os import path
 from ..utils.algorithms.lcs import lcs as LCS
+from .plg_help import plugin_func, plugin, plugin_func_option, OPT_OPTIONAL
 user_tag_db = TypedLevelDB.open(
     path.join(mainpth, "saves", "plg_diffusion", "user_tags"))
 
@@ -110,6 +113,7 @@ def get_pose_translations():
     add("回头看", "looking back")
     add("抚胸", "hand on own chest")
     add("摸胸", "hand on breast")
+    add("手背在身后", "背手", "hand behind body")
     add("持武器", "holding weapon")
     add("持食物", "holding food")
     add("从下面", "from below")
@@ -127,7 +131,14 @@ def get_pose_translations():
     add("调整帽子", "扶帽子", "adjusting clothes")
     add("调整胖次", "在穿胖次", "adjusting panties")
     add("调整袜子", "在穿袜子", "adjusting legwear")
-    add("扶眼睛", "adjusting eyewear")
+    add("扶眼镜", "adjusting eyewear")
+    add("鸭子坐", "wariza")
+    add("脱鞋", "shoes off")
+    add("脚底", "sole")
+    add("橡胶制", "latex")
+    add("胶衣", "latex body suit")
+    add("白袜子", "white socks")
+
     return ret
 
 
@@ -218,6 +229,8 @@ def get_clothes_translations():
     add("朱唇微启", "parted lips")
     add("膝枕", "lap pillow")
     add("洛丽塔", "lolita fashion")
+    add("贝雷帽", "beret")
+    add("死库水", "one-piece swimsuit, school swimsuit")
     return ret
 
 
@@ -266,7 +279,7 @@ def get_chara_translations():
     add("むら", "silver hair, blue eyes, short twintails, ahoge")
     add("C54", "C.54", "golden eyes, black hair, short twintail, red shawl, two-tone hair, red hair, multicolored hair, fang, red streaked hair")
     add("佐久间魔鸳", "golden hair, yellow hair, small breasts, red eyes, demon horn, succubus, succubus tail")
-    add("埃尔克拉夫特", "blue eyes, flat chest, light bonde hair, brown hair, gradient hair, blunt bangs, bob cut")
+    add("埃尔克拉夫特", "blue eyes, light bonde hair, brown hair, gradient hair, blunt bangs, bob cut")
 
     return ret
 
@@ -371,6 +384,9 @@ def get_prompt_translations(message: Union[Literal[None], CQMessage] = None):
     ret.update(get_nsfw_translations())
     ret.update(get_chara_translations())
     if(message):
+        for k, v in user_tag_db.items():
+            # pass
+            ret.update(v)
         custom = user_tag_db.get(message.sender.id, {})
         ret.update(custom)
     return ret
@@ -407,7 +423,7 @@ def process_prompt(prompt, message: Union[Literal[None], CQMessage] = None):
     return prompt, replaced, remain
 
 
-def illust_prompt(prompt, replaced, remain, include_translation=True, message: Union[Literal[None], CQMessage] = None):
+def illust_prompt(prompt, replaced, remain, include_translation=True, message: Union[Literal[None], CQMessage] = None, ex_neg=None):
     tmp = []
     RT = RichText(Keyword("texts"), width=620, fontSize=None,
                   autoSplit=False, imageLimit=(600, 400))
@@ -433,13 +449,21 @@ def illust_prompt(prompt, replaced, remain, include_translation=True, message: U
                 mx = score
         s, k = mx
         v = all_translations[k]
-        texts.append("你想要的可能是: %s(%s), 或者尚未收录"%(k, v))
-        tmp.append(RT.render(texts=texts, fontSize=30, bg=(255, 180, 200), fill=(128, 0, 64)))
+        texts.append("你想要的可能是: %s(%s), 或者尚未收录" % (k, v))
+        tmp.append(RT.render(texts=texts, fontSize=30,
+                             bg=(255, 180, 200), fill=(128, 0, 64)))
     if(prompt):
         tmp.append(RT.render(texts=[prompt], fontSize=30))
+    if(ex_neg):
+        tmp.append(RT.render(texts=[ex_neg], fontSize=28, bg=(
+            255, 120, 140), fill=(80, 0, 20)))
     tmp.sort(key=lambda x: x.size[1])
-    gr = Grid(tmp, bg=(255,)*3, borderWidth=5, autoAspectRatio=0.05)
-    return gr.render()
+    gr = Grid(tmp, bg=(255,)*3, borderWidth=5, autoAspectRatio=0.034)
+    ret = gr.render()
+    w, h = ret.size
+    if(w*h > 3e6):
+        ret = sizefit.area(ret, 3e6)
+    return ret
 
 
 def invoke_api(message, *args, files=None, **kwargs):
@@ -520,12 +544,10 @@ def run_report_performance(message: CQMessage):
                 else:
                     _ += "%.1f秒/图片\n" % (1/spd)
                 mes.append(_)
-            if("Avg.Load" in _data):
-                load = _data["Avg.Load"]
-                mes.append("    平均负载：%.2f%%\n" % (load*100))
-            if("currently_running" in _data):
-                load = _data["currently_running"]
-                mes.append("    当前负载：%.2f%%\n" % (load*100))
+                if("Avg.Load" in _data):
+                    load = _data["Avg.Load"]
+                    mes.append("    最近平均排队时间：%.2f\n" % (load/spd))
+
         mes[-1] = mes[-1].strip("\n")
         simple_send(mes)
 
@@ -564,7 +586,7 @@ def run_inpaint(message, prompt, guidance=None, strength=None, parts=None):
         pass
 
 
-def run_img2img(message: CQMessage, prompt, guidance=None, strength=None, orig_image=None):
+def run_img2img(message: CQMessage, prompt, guidance=None, strength=None, orig_image=None, ex_neg=None):
     if(strength is None):
         strength = 0.65
     else:
@@ -581,20 +603,23 @@ def run_img2img(message: CQMessage, prompt, guidance=None, strength=None, orig_i
     files = {"data": bio}
     prompt, replaced, remain = process_prompt(prompt, message=message)
 
+    if(ex_neg):
+        ex_neg, _, _ = process_prompt(ex_neg, message=message)
+
     success, eta = get_diffusion_eta(n=strength)
     if(success):
-        pr_img = illust_prompt(prompt, replaced, remain)
-        simple_send(["正在生成...预计需要%.2f秒" % eta, pr_img])
+        pr_img = illust_prompt(prompt, replaced, remain,
+                               message=message, ex_neg=ex_neg)
+        simple_send(["原图:", orig_image, "正在生成...预计需要%.2f秒" % eta, pr_img])
     else:
         print("Cannot get eta because", eta)
 
     success, response = invoke_api(
-        message, "img2img", prompt, files=files, guidance=guidance, strength=strength)
+        message, "img2img", prompt, files=files, guidance=guidance, strength=strength, ex_neg=ex_neg)
     if(success):
         img = bytes2img(response.content)
         sent_image[message.sender.id] = img
-        simple_send([img,
-                     illust_prompt(prompt, replaced, remain), message.construct_reply()])
+        simple_send([img, message.construct_reply()])
     else:
         simple_send("失败%s" % response)
 
@@ -653,9 +678,12 @@ def run_txt2img(message: CQMessage, prompt, aspect_ratio=None, guidance=None, ba
     else:
         batch = int(batch)
     prompt, replaced, remain = process_prompt(prompt, message=message)
+    if(ex_neg):
+        ex_neg, _, _ = process_prompt(ex_neg, message=message)
     success, eta = get_diffusion_eta(n=batch)
     if(success):
-        pr_img = illust_prompt(prompt, replaced, remain)
+        pr_img = illust_prompt(prompt, replaced, remain,
+                               ex_neg=ex_neg, message=message)
         simple_send(["正在生成...预计需要%.2f秒" % eta, pr_img])
     else:
         print("Cannot get eta because", eta)
@@ -675,6 +703,110 @@ def run_txt2img(message: CQMessage, prompt, aspect_ratio=None, guidance=None, ba
         simple_send(imgs+[message.construct_reply()])
     else:
         simple_send("生成失败：%s" % response)
+
+
+def pow_remain_sign(x, p):
+    absx = abs(x)+1e-7
+    return x*(absx**(p-1))
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/扩宽画图", opts={"-s", "-a"})
+def cmd_expand_draw(message: CQMessage, *args, **kwargs):
+    if(message.sender.id in sent_image):
+        orig_image = sent_image[message.sender.id]
+    else:
+        simple_send("还未画过图哟")
+        return
+
+    strength = kwargs.get("s") or kwargs.get("strength")
+    guidance = kwargs.get("g") or kwargs.get("guidance")
+    prompt = " ".join(args)
+    if(not prompt):
+        simple_send("请输入prompt")
+
+    return run_img2img(message, " ".join(args), strength=strength, guidance=guidance, orig_image=orig_image)
+
+
+def do_process(message, orig_image, flip=False, expand=False, paste=False, rate=None, shuffle=False):
+    ret = orig_image
+    if(flip):
+        ret = ret.transpose(Image.FLIP_LEFT_RIGHT)
+    if(expand):
+        w, h = ret.size
+        if(rate is None):
+            w1, h = int(w*1.5), h
+        else:
+            w1, h = int(h*rate), h
+        arr0 = np.array(ret)
+        arr1 = np.zeros((h, w1, 3), np.uint8)
+        for x in range(w1):
+            xx = x/(w1-1)*2-1
+            xx = pow_remain_sign(xx, 1/3)
+            xx = (xx+1)/2
+            xx = int(xx*(w-1))
+            arr1[:, x, :] = arr0[:, xx, :]
+        ret = Image.fromarray(arr1)
+    if(shuffle):
+        arr = np.array(ret)
+        arr1 = arr.copy()
+        h, w, ch = arr.shape
+        pads = int((h*w/100)**0.5)
+        padh, padw = h//pads, w//pads
+        ls1 = [(i, j) for i in range(padh) for j in range(padw)]
+        ls2 = [(i, j) for i in range(padh) for j in range(padw)]
+        random.shuffle(ls2)
+        for idx, xy in enumerate(ls1):
+            y, x = xy
+            y1, x1 = ls2[idx]
+            pad = arr[y*pads:(y+1)*pads, x*pads:(x+1)*pads, :]
+            arr1[y1*pads:(y1+1)*pads, x1*pads:(x1+1)*pads, :] = pad
+        ret = Image.fromarray(arr1)
+
+    if(paste):
+        w, h = ret.size
+        ww, hh = orig_image.size
+        ret.paste(orig_image, box=((w-ww)//2, (h-hh)//2))
+    return ret
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/重发", opts={"-flip", "-expand", "-paste", "-rate", "-shuffle"}, bool_opts={"-flip", "-expand", "-paste", "-shuffle"})
+def cmd_resend_image(message, *args, expand=False, flip=False, paste=False, shuffle=False, **kwargs):
+    if(message.sender.id in sent_image):
+        orig_image: Image.Image = sent_image[message.sender.id]
+        ret = orig_image
+    else:
+        simple_send("还未画过图哟")
+        return
+    if(kwargs.get("rate")):
+        rate = float(kwargs["rate"])
+    else:
+        rate = None
+    ret = do_process(message, orig_image, expand=expand,
+                     flip=flip, paste=paste, rate=rate, shuffle=shuffle)
+    sent_image[message.sender.id] = ret
+    simple_send(ret)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/处理", opts={"-flip", "-expand", "-paste", "-rate", "-shuffle", "-expandh"}, bool_opts={"-flip", "-expand", "-paste", "-shuffle"})
+def cmd_preprocess_image(message, *args, expand=False, flip=False, paste=False, shuffle=False, **kwargs):
+    imgtype, orig_image = message.get_sent_images()[0]
+    if(kwargs.get("rate")):
+        rate = float(kwargs["rate"])
+    else:
+        rate = None
+    ret = do_process(message, orig_image, expand=expand,
+                     flip=flip, paste=paste, rate=rate, shuffle=shuffle)
+    sent_image[message.sender.id] = ret
+    simple_send(ret)
 
 
 @receiver
@@ -699,26 +831,55 @@ def cmd_diffusion_load(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/以图画图", opts={"-guidance", "-strength", "-s", "-g"})
+@command("/以图画图", opts={"-guidance", "-strength", "-s", "-g", "-neg", "-扩宽", "-a"}, ls_opts={"-neg"}, bool_opts={"-扩宽"})
 def cmd_img2img(message: CQMessage, *args, **kwargs):
     strength = kwargs.get("s") or kwargs.get("strength")
     guidance = kwargs.get("g") or kwargs.get("guidance")
-    return run_img2img(message, " ".join(args), strength=strength, guidance=guidance)
+    ex_neg = kwargs.get("neg")
+    if(ex_neg):
+        ex_neg = " ".join(ex_neg)
+    if(not args):
+        simple_send("请输入prompt")
+        return
+
+    if(kwargs.get("扩宽")):
+        rate = kwargs.get("a")
+        if(rate):
+            rate = float(rate)
+        orig_image = do_process(
+            message, orig_image=orig_image, expand=True, rate=rate, paste=True)
+
+    return run_img2img(message, " ".join(args), strength=strength, guidance=guidance, ex_neg=ex_neg)
 
 
 @receiver
 @threading_run
 @on_exception_response
-@command("/完善画图", opts={"-guidance", "-strength", "-s", "-g"})
+@command("/完善画图", opts={"-guidance", "-strength", "-s", "-g", "-扩宽", "-a"}, bool_opts={"-扩宽"})
 def cmd_enhance_img(message: CQMessage, *args, **kwargs):
+    post_process = False
     if(message.sender.id in sent_image):
         orig_image = sent_image[message.sender.id]
     else:
         simple_send("还未画过图哟")
         return
+    if(kwargs.get("扩宽")):
+        rate = kwargs.get("a")
+        if(rate):
+            rate = float(rate)
+        orig_image = do_process(
+            message, orig_image=orig_image, expand=True, rate=rate, paste=True)
+
     strength = kwargs.get("s") or kwargs.get("strength")
     guidance = kwargs.get("g") or kwargs.get("guidance")
-
+    prompt = " ".join(args)
+    if(not prompt):
+        if(not post_process):
+            simple_send("请输入prompt")
+        else:
+            sent_image[message.sender.id] = orig_image
+            simple_send(orig_image)
+        return
     return run_img2img(message, " ".join(args), strength=strength, guidance=guidance, orig_image=orig_image)
 
 
@@ -775,17 +936,50 @@ def cmd_txt2img1(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/自定义标签|/标签简写|/标签简化|/简化标签", opts={})
+@command("/自定义标签|/标签简写|/标签简化|/简化标签", opts={"-pop"}, bool_opts={"-pop"})
 def cmd_custom_tags(message: CQMessage, *args, **kwargs):
     uid = message.sender.id
     custom_translations = user_tag_db.get(uid, {})
+    do_show = False
     if(args):
         key = args[0]
-        value = " ".join(args[1:])
-        custom_translations[key] = value
+        if(kwargs.get("pop")):
+            custom_translations.pop(key, None)
+            do_show = True
+        elif(len(args) > 1):
+            value = " ".join(args[1:])
+            custom_translations[key] = value
+            do_show = True
+        else:
+            value = custom_translations.get(key, "")
+            if(value):
+                simple_send("%s: %s" % (key, value))
+            else:
+                simple_send("没有为%s进行简写定义, 请输入/标签简写 [名字] [内容..]进行标签简写设定" % key)
     user_tag_db[uid] = custom_translations
-    im = illust_prompt("", custom_translations, "")
-    simple_send(im)
+    if(do_show):
+        if(custom_translations):
+            im = illust_prompt("", custom_translations, "")
+            simple_send(im)
+        else:
+            simple_send("没有任何标签简写")
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/特训词条|/自训练词条|/textual-inversion", opts={})
+def cmd_special_tags(message: CQMessage, *args, **kwargs):
+    success, r = invoke_api(message, "tags")
+    if(success):
+        j = r.json()
+        c = j.get("custom", [])
+        if(c):
+            simple_send(", ".join(c))
+        else:
+            simple_send("木有")
+    else:
+        simple_send("失败")
 
 
 @receiver
@@ -799,5 +993,41 @@ def cmd_txt2img(message: CQMessage, *args, **kwargs):
     batch = kwargs.get("n") or kwargs.get("batch")
     ex_neg = kwargs.get("neg")
     if(ex_neg is not None):
-        ex_neg = ", ".join(ex_neg)
+        ex_neg = " ".join(ex_neg)
+    if(not args):
+        simple_send("请输入prompt")
+        return
+    # prompt = " ".join(args)
     return run_txt2img(message, " ".join(args), aspect_ratio=aspect_ratio, guidance=guidance, batch=batch, ex_neg=ex_neg)
+
+
+this_plg = plugin("AI画图")
+
+opt_guidance = plugin_func_option(
+    "-g", "词条引导画图的强度, 越高越接近描述", type=OPT_OPTIONAL)
+opt_neg = plugin_func_option("-neg", "额外的负词条", type=OPT_OPTIONAL)
+opt_strength = plugin_func_option("-s", "以图画图强度, 数值越大越偏离原图", type=OPT_OPTIONAL)
+
+plg_func_draw = plugin_func("/画图 [图片描述] [-g <guidance>] [-neg <ex_neg>]")
+plg_func_draw.append(opt_guidance)
+plg_func_draw.append(opt_neg)
+
+plg_func_draw_with_img = plugin_func(
+    "/以图画图 [图片描述]  [-g <guidance>] [-neg <neg prompt>] [-s <strength>]",
+    desc="以您发送的图片为基础进行AI画图"
+)
+plg_func_draw_with_img.append(opt_guidance)
+plg_func_draw_with_img.append(opt_strength)
+plg_func_draw_with_img.append(opt_neg)
+
+plg_func_refine_draw = plugin_func(
+    "/完善画图 [图片描述] [-g <guidance>] [-neg <neg prompt>] [-s <strength>]",
+    desc="完善bot上一次画出的图片"
+)
+plg_func_refine_draw.append(opt_guidance)
+plg_func_refine_draw.append(opt_strength)
+plg_func_refine_draw.append(opt_neg)
+
+this_plg.append(plg_func_draw)
+this_plg.append(plg_func_draw_with_img)
+this_plg.append(plg_func_refine_draw)

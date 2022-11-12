@@ -65,8 +65,8 @@ def parse_args(str, options, bool_opts = None, ls_opts = None):
 
 
 if(__name__ == "__main__"):
-    string = "meow -ls aqua aqua(konosuba) -bool -a 0.8 -w 1.5"
-    opts = {"-ls", "-bool", "-a"}
-    ls_opts = {"-ls"}
+    string = "meow -ls aqua aqua(konosuba) -bool -a 0.8 -w 1.5 -ls1"
+    opts = {"-ls", "-bool", "-a", "-ls1"}
+    ls_opts = {"-ls", "-ls1"}
     bool_opts = {"-bool"}
     print(parse_args(string, opts, bool_opts, ls_opts))

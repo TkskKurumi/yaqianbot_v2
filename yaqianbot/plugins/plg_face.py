@@ -174,6 +174,7 @@ def cmd_face_8bit(message: CQMessage):
 
 @receiver
 @threading_run
+@on_exception_response
 @startswith("(/字幕)|(/加字)")
 def cmd_face_caption(message: CQMessage):
     text = after_match("(/字幕)|(/加字)", message.plain_text).strip("\r\n ")
@@ -182,7 +183,7 @@ def cmd_face_caption(message: CQMessage):
         nonlocal text
         img = fix_width(img, 300)
         RT = RichText(text, fontSize=36, width=250,
-                      dont_split=False, autoSplit=False)
+                      dontSplit=False, autoSplit=False).render()
         COL = Column([img, RT], bg=(255,)*4, alignX=0.5)
         return COL.render()
     imgtype, img = message.get_sent_images()[0]
