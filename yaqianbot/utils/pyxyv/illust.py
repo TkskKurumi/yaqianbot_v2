@@ -54,8 +54,8 @@ class Illust:
         self.author_id = j['userId']
         self.page_count = j["pageCount"]
         plain_tags = [i['tag'] for i in j["tags"]['tags']]
-        plain_tags.append("user: "+self.author)
-        plain_tags.append("userId: "+self.author_id)
+        plain_tags.append("user: %s"%self.author)
+        plain_tags.append("userId: %s"%self.author_id)
         self.plain_tags = plain_tags
         self.raw = j
     @property
