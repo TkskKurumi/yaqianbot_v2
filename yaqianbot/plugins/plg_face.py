@@ -277,7 +277,7 @@ def cmd_heidibaizi(message: CQMessage):
     if(content):
         bg = Color.from_any(hanzi2color[bg])
         fg = Color.from_any(hanzi2color[fg])
-        RT = RichText(content, width=512, fontSize=48, bg=bg.get_rgba(
+        RT = RichText(content, width=720, fontSize=72, bg=bg.get_rgba(
         ), fill=fg.get_rgba(), alignX=0.5, autoSplit=False, dontSplit=False)
         im = RT.render()
         message.response_sync(im)
@@ -565,6 +565,26 @@ def cmd_luxunrt(message, *args, **kwargs):
     up = (h-hh)
     luxun.paste(RT, box=(le, up), mask=RT)
     message.response_sync(luxun)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/融合", opts={})
+def cmd_avatar_combine(message: CQMessage, *args, **kwargs):
+    avt0 = message.sender.get_avatar()[1].resize((128, 128))
+    if(args):
+        avt1 = message.get_mate(" ".join(args)).get_avatar()[1].resize((128, 128))
+    else:
+        avt1 = message.get_mate().get_avatar()[1].resize((128, 128))
+    arr0 = np.asarray(avt0)
+    arr1 = np.asarray(avt1)
+    mask = np.random.uniform(-1, 1, (8, 8, 1))
+    mask = (mask+1)/2
+    mask = mask.repeat(128//8, axis=0).repeat(128//8, axis=1)
+    ret = arr0*mask + arr1*(1-mask)
+    ret = Image.fromarray(ret.astype(np.uint8))
+    simple_send(ret)
 
 
 @receiver

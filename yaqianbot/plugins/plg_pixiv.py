@@ -42,9 +42,9 @@ def link_show_illust(ill: Illust):
     return link(nm, inner)
 def rand_img(message: CQMessage=None):
     today = _getRankingToday()
-    delta = abs(random.normalvariate(0, 300))
+    delta = abs(random.normalvariate(0, 700))
     delta = timedelta(days=delta)
-    page = random.randint(1, 3)
+    page = random.randint(1, 2)
     ranking = Ranking(today-delta, mode="monthly", page=page)
     id = random.choice(ranking.ids)
     ill = Illust(id)
@@ -124,9 +124,9 @@ def cmd_pixiv(message: CQMessage, *args, **kwargs):
 @startswith("/pix$|/色图")
 def cmd_pixiv_(message: CQMessage):
     today = _getRankingToday()
-    delta = abs(random.normalvariate(0, 300))
+    delta = abs(random.normalvariate(0, 700))
     delta = timedelta(days=delta)
-    page = random.randint(1, 3)
+    page = random.randint(1, 2)
     ranking = Ranking(today-delta, mode="monthly", page=page)
     id = random.choice(ranking.ids)
     ill = Illust(id)
