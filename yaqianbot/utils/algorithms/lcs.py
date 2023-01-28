@@ -43,7 +43,7 @@ class _lcs:
             return 0
         ret = a**rate
         return ret*(b**(1-rate))
-    def calc1(A, B, f_similarity = element_similarity):
+    def calc1(A, B, f_similarity = element_similarity, donot_trim = False):
         sa = set(A)
         sb = set(B)
         a_matched = ndarray((len(A),), False)
@@ -51,10 +51,10 @@ class _lcs:
         simple_a = list()
         simple_b = list()
         for idx, i in enumerate(A):
-            if(i in sb):
+            if((i in sb) or donot_trim):
                 simple_a.append((idx, i))
         for idx, i in enumerate(B):
-            if(i in sa):
+            if((i in sa) or donot_trim):
                 simple_b.append((idx, i))
         n = len(simple_a)
         m = len(simple_b)
@@ -209,9 +209,9 @@ class _lcs:
         D['b_matched'] = [bool(int(i)) for i in D["b_matched"]]
         return _lcs(A=A, B=B, **D)
 
-def lcs(A, B):
+def lcs(A, B, f_similarity=element_similarity):
     
-    return _lcs.calc1(A, B)
+    return _lcs.calc1(A, B, f_similarity=f_similarity)
 if(__name__=="__main__"):
     A = "被戳的反应"
     B = "被戳戳嗯喵咩"
