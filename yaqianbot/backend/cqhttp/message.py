@@ -19,7 +19,7 @@ import base64
 from io import BytesIO
 import shutil
 from ..configure import bot_config
-
+GREYSCALE = False
 
 message_image = {}
 def mem_message_im(id, im):
@@ -28,10 +28,11 @@ def mem_message_im(id, im):
         message_image.pop(ls[0])
     message_image[str(id)] = im
     return im
-def img_b64(im, limit_size=1e6):
+def img_b64(im, limit_size=4e6, force_png = False):
+    if(GREYSCALE):im = im.convert("L")
     if(im.mode == "P"):
         im = im.convert("RGBA")
-    if("A" in im.mode):
+    if(("A" in im.mode) or force_png):
         format = "PNG"
         save_kwargs = {}
     else:
@@ -49,10 +50,10 @@ def img_b64(im, limit_size=1e6):
         cur_size = bio.tell()
 
         if((w, h) != (original_w, original_h)):
-            print("Compress image %dx%d %d bytes to %dx%d %d bytes" %
+            print("Compress image %dx%d %d bytes to %dx%d %d bytes in %s format" %
                   (
                       original_w, original_h, original_size,
-                      w, h, cur_size)
+                      w, h, cur_size, format)
                   )
 
         original_size = original_size or cur_size
@@ -64,20 +65,22 @@ def img_b64(im, limit_size=1e6):
     bio.seek(0)
     bytes = bio.read()
     bio.close()
-
+    print("base64 encode image", cur_size, "bytes", format)
     with print_time("b64 encode image"):
         ret = base64.b64encode(bytes).decode("ascii")
     return ret
 
 
-def img_file_b64(filename, limit_size=(2 << 20)):
+def img_file_b64(filename, limit_size=(4 << 20), force_png = False):
     im = Image.open(filename)
-    if(im.mode not in ["RGB", "RGBA"]):
+    
+    if(im.mode not in ["RGB", "RGBA", "L"]):
         with open(filename, "rb") as f:
             ret = base64.b64encode(f.read()).decode("ascii")
         return ret
     else:
-        return img_b64(im, limit_size)
+        if(GREYSCALE):im = im.convert("L")
+        return img_b64(im, limit_size, force_png = force_png)
 def file_b64(filename):
     with open(filename, "rb") as f:
         ret = f.read()
@@ -91,7 +94,7 @@ def http_file(filename):
     ret = "/".join([http_host, path.basename(dst)])
     print(_requests.head(ret))
     return ret
-def prepare_message(mes):
+def prepare_message(mes, force_png = False):
     if(not isinstance(mes, list)):
         mes = [mes]
     ret = []
@@ -116,7 +119,7 @@ def prepare_message(mes):
             else:
                 ret.append(MSEG.text(i))
         elif(isinstance(i, Image.Image)):
-            file = "base64://"+img_b64(i)
+            file = "base64://"+img_b64(i, force_png=force_png)
             ret.append(MSEG.image(file))
         elif(isinstance(i, MSEG) or isinstance(i, dict)):
             ret.append(i)
@@ -208,7 +211,7 @@ class CQMessage(Message):
     @classmethod
     def fromdict(cls, d):
         return cls.from_cq(d)
-    def construct_forward(self, message, uin=None, name=None):
+    def construct_forward(self, message, uin=None, name=None, force_png=False):
         if(uin is None):
             uin = self.raw["self_id"]
         if(name is None):
@@ -217,7 +220,7 @@ class CQMessage(Message):
         data = dict()
         data["uin"] = uin
         data["name"] = name
-        data["content"] = prepare_message(message)
+        data["content"] = prepare_message(message, force_png=force_png)
         return {"type": "node", "data": data}
     def send_forward_message(self, messages):
         raw = self.raw
@@ -309,7 +312,7 @@ class CQMessage(Message):
                   plain_text=plain_text, group=group, raw=event, self_id=self_id)
         ret.update_rpics()
         if(pics):
-            im = any_image(pics)
+            im = pics[0]
             print("DEBUG: ", pics, im)
             id = event.get("message_id")
             if(id):
@@ -322,6 +325,9 @@ class CQMessage(Message):
             print("DEBUG: no reply id", self.reply_mes_id)
             return None
         im = message_image.get(str(self.reply_mes_id))
+        if(isinstance(im, dict)):
+            url = im["data"]["url"]
+            im = requests.get_image(url)[-1]
         print("DEBUG: reply im", [self.reply_mes_id, im, list(message_image)])
         return im
     def get_sent_images(self, rettype="image", **kwargs):
@@ -340,7 +346,7 @@ class CQMessage(Message):
         return ret
 
     @threading_run
-    def response_sync(self, message, at=False, reply=False):
+    def response_sync(self, message, at=False, reply=False, force_png=False):
         args = dict()
 
         def prepare(**kwargs):
@@ -354,7 +360,7 @@ class CQMessage(Message):
             else:
                 args["message_type"] = "group"
         im = any_image(message)
-        prepare(message=prepare_message(message))
+        prepare(message=prepare_message(message, force_png=force_png))
         # print(args)
         ret = cqhttp._bot.sync.send_msg(**args)
         if(im):
@@ -363,7 +369,7 @@ class CQMessage(Message):
                 mem_message_im(id, im)
         return ret
 
-    async def response_async(self, message, at=False, reply=False):
+    async def response_async(self, message, at=False, reply=False, force_png=False):
         args = dict()
 
         def prepare(**kwargs):
@@ -372,7 +378,7 @@ class CQMessage(Message):
             if(key in self.raw):
                 args[key] = self.raw[key]
         im = any_image(message)
-        prepare(message=prepare_message(message))
+        prepare(message=prepare_message(message, force_png=force_png))
         # print(args)
         ret = await cqhttp._bot.send_msg(**args)
         if(im):
