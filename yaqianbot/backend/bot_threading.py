@@ -11,7 +11,7 @@ cnt_lock = Lock()
 pending_cnt = defaultdict(int)
 running_cnt = defaultdict(int)
 
-pool = ThreadPoolExecutor()
+pool = ThreadPoolExecutor(max_workers=256)
 
 
 

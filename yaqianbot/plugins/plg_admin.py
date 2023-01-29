@@ -43,13 +43,14 @@ def cmd_handle_lnk(message: Message):
 @threading_run
 @on_exception_response
 @is_su
-@command("/reload", opts = {})
+@command("/reload", opts = {"-no_callback"}, bool_opts={"-no_callback"})
 def cmd_admin_reload(message:Message, *args, **kwargs):
     mes = []
+    nc = kwargs.get("no_callback")
     for plg in args:
         for name, module in list(sys.modules.items()):
             if(name.endswith(plg)):
-                if(hasattr(module, "_on_reload") and callable(module._on_reload)):
+                if((not nc) and hasattr(module, "_on_reload") and callable(module._on_reload)):
                     has_cb = True
                     reload_args, reload_kwargs = module._on_reload()
                 else:

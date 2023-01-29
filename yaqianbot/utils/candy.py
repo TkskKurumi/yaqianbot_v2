@@ -11,14 +11,14 @@ class FakeLock:
         print(self, ".acquire")
     def release(self):
         print(self, ".release")
-def simple_send(messages):
+def simple_send(messages, **kwargs):
     frame = inspect.currentframe().f_back
     mes = frame.f_locals.get("mes") 
     message = frame.f_locals.get("message")
     if(hasattr(mes, "response_sync")):
-        ret = mes.response_sync(messages)
+        ret = mes.response_sync(messages, **kwargs)
     elif(hasattr(message, "response_sync")):
-        ret = message.response_sync(messages)
+        ret = message.response_sync(messages, **kwargs)
     else:
         raise Exception("Cannot do simple_send in this session")
     del frame

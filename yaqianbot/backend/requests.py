@@ -5,6 +5,7 @@ from .paths import cachepth, temppth, ensure_directory
 from io import BytesIO
 from PIL import Image
 from ..utils.myhash import base32
+from ..utils.candy import print_time
 from os import path
 cache_backend = SQLiteCache(cachepth, cache_control=True)
 sess = requests_cache.CachedSession(
@@ -12,7 +13,8 @@ sess = requests_cache.CachedSession(
     backend=cache_backend,
     expire_after=timedelta(minutes=20)
 )
-
+with print_time("clear cache"):
+    sess.cache.remove_expired_responses()
 
 def get_file(*args, savepath=None, **kwargs):
     mime2ext = {
