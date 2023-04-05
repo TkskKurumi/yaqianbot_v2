@@ -45,7 +45,6 @@ def parse_args(str, options, bool_opts = None, ls_opts = None):
     for i in splited:
         if(i.startswith("-") and (i in options)):
             if(i in bool_opts):
-                print('set true', i, bool_opts)
                 kwargs[i]=True
             else:
                 kw = i

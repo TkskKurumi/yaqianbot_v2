@@ -96,18 +96,29 @@ The following is a coherent verbose detailed conversation between {botname} and 
             from_state=data["state"]
         )
 
+def process_prompt(p: str) -> str:
+    def process_lf(p: str) -> str:
+        return p.replace("\\n", "\n")
+    def process_slash(p: str) -> str:
+        return "\\".join([process_lf(i) for i in p.split("\\\\")])
+    return process_slash(p)
 
 @receiver
 @threading_run
 @on_exception_response
-@command("/cont", {"-recall"}, ls_opts={"-recall"})
+@command("/cont", {"-recall", '-reset', "-stop_before"}, ls_opts={"-recall", "-stop_before"}, bool_opts = {'-reset'})
 def cmd_rwkv_cont(message: CQMessage, *args, **kwargs):
-    prompt = " ".join(args)
+    uid = message.sender.id
+    is_reset = kwargs.get("reset")
+    prompt = process_prompt(" ".join(args))
     kwa = {}
-    if(message.reply_mes_id):
-        mid = str(message.reply_mes_id)
-        if(mid in cont_args):
-            kwa.update(cont_args[mid])
+    if(not is_reset):
+        if(message.reply_mes_id):
+            mid = str(message.reply_mes_id)
+            if(mid in cont_args):
+                kwa.update(cont_args[mid])
+        elif(uid in cont_args):
+            kwa.update(cont_args[uid])
     for k, v in kwargs.items():
         if(k=="recall"):
             kwa[k]=v
@@ -118,7 +129,7 @@ def cmd_rwkv_cont(message: CQMessage, *args, **kwargs):
 @on_exception_response
 @command("/chat", {"-me", "-bot", "-reset"}, bool_opts={"-reset"})
 def cmd_rwkv_chat(message: CQMessage, *args, **kwargs):
-    prompt = " ".join(args)
+    prompt = process_prompt(" ".join(args))
     kwa = {}
     if(message.reply_mes_id):
         mid = str(message.reply_mes_id)
