@@ -26,13 +26,40 @@ from ..utils.algorithms.lcs import lcs as LCS
 from ..utils.algorithms.lcs import _lcs
 from .plg_help import plugin_func, plugin, plugin_func_option, OPT_OPTIONAL
 from ..utils.myhash import base32
+from ..utils.myhash import myhash as hashi
+from .plg_diffusion_prompt_processor import PromptProcessor as PPv2
+from ..utils.candy import locked
 import math
 import time
 user_tag_db = TypedLevelDB.open(
     path.join(mainpth, "saves", "plg_diffusion_v3", "user_tags"))
+
+user_config = TypedLevelDB.open(
+    path.join(mainpth, "saves", "plg_diffusion_v3", "user_config")
+)
+
 user_today_db = TypedLevelDB.open(
     path.join(mainpth, "saves", "plg_diffusion_v3", "today")
 )
+gallery_p2i = TypedLevelDB.open(
+    path.join(mainpth, "saves", "plg_diffusion_v3", "gallery", "p2i")
+)
+gallery_i2p = TypedLevelDB.open(
+    path.join(mainpth, "saves", "plg_diffusion_v3", "gallery", "i2p")
+)
+GALLERY_LOCK = Lock()
+
+def get_prompt_imgs(p):
+    if(p in gallery_p2i):
+        with locked(GALLERY_LOCK):
+            ret = gallery_p2i[p]
+            for i in list(ret):
+                if(gallery_i2p[i] != p): # conflict
+                    ret.pop(i)
+            gallery_i2p[p] = ret
+        return ret
+    else:
+        return {}
 sent_image = {}
 last_prompt = {}
 if("DIFFUSION_HOST_V3" in bot_config):
@@ -101,7 +128,7 @@ def get_throttle(message):
         throttles[id] = thr
     return thr
 class SimpleImageIndexing:
-    def __init__(self, max_n = 128):
+    def __init__(self, max_n = 256):
         self.keys = []
         self.values = []
         self.max_n = max_n
@@ -129,21 +156,33 @@ img_prompt = SimpleImageIndexing()
 
 
 def _on_reload() -> Tuple[Tuple, Dict]:
-    return tuple(), {"sent_image": sent_image, "img_prompt": img_prompt}
+    return tuple(), {
+        "sent_image": sent_image,
+        "img_prompt": img_prompt,
+        "orig_pics": orig_pics,
+        "mask_pics": mask_pics,
+        "diff_pics": diff_pics
+    }
 
 
 def _on_after_reload(*args, **kwargs):
-    global sent_image, img_prompt
+    global sent_image, img_prompt, orig_pics, mask_pics, diff_pics
     if("sent_image" in kwargs):
         sent_image = kwargs["sent_image"]
     if("img_prompt" in kwargs):
         img_prompt = kwargs["img_prompt"]
+    if("orig_pics" in kwargs):
+        orig_pics = kwargs["orig_pics"]
+    if("mask_pics" in kwargs):
+        mask_pics = kwargs["mask_pics"]
+    if("diff_pics" in kwargs):
+        diff_pics = kwargs["diff_pics"]
 user_tickets = {}
 def _hsl2rgb(h, s, l, a=255):
     return Color.from_hsl(h, s, l, a).get_rgba()
 def img2bio(img):
     bio = BytesIO()
-    img.convert("RGB").save(bio, "JPEG")
+    img.convert("RGBA").save(bio, "PNG")
     bio.seek(0)
     return bio
 class DiffuserFastAPITicket:
@@ -203,7 +242,8 @@ class DiffuserFastAPITicket:
             im = Image.open(bio)
             ret.append(im)
         return ret
-
+    def __del__(self):
+        r = requests.get(self.ticket_url+"/del")
 
 def process_prompt(message: CQMessage, prompt):
     SEP = ", "
@@ -308,8 +348,11 @@ class PromptProcessor:
             prompt = "".join(_)
         return prompt
     def __init__(self, prompt, entries, excludes: Union[Tuple, List, Literal[None]] = None):
+        prompt = PPv2(prompt, entries=entries).raw
+        print("PPv2", prompt)
         raw, remain, replacements = PromptProcessor._process_translation(prompt, entries)
         raw = PromptProcessor._process_exclude(raw, entries, excludes)
+        
         friendly_weighted = PromptProcessor._process_weights(raw, return_dict=True)
         self.raw_weighted = dict(friendly_weighted)
         ordered = ""
@@ -457,19 +500,43 @@ def illust_entries(self_e, other_e):
 @receiver
 @threading_run
 @on_exception_response
-@command("/测试", opts={})
+@command("/测试", opts={"-t", "-r"}, bool_opts={"-t", "-r"})
 def cmd_test(message: CQMessage, *args, **kwargs):
-    im = message.get_reply_image()
-    if(im):
-        prompt = img_prompt[im]
-        uid = message.sender.id
-        udb = user_tag_db.get(uid, {})
-        key = "标签"+base32(prompt, length=2)
-        udb[key] = prompt
-        simple_send("将此图标签简化为了「%s」"%key)
-        user_tag_db[uid] = udb
+    if(message.get_reply_image()):
+        orig_image = message.get_reply_image()
     else:
-        simple_send("无法获取此条消息的图片")
+        imgtype, orig_image = message.get_sent_images()[0]
+    orig_image = orig_image.convert("RGB")
+    w, h = orig_image.size
+    if(kwargs.get("r")):
+        st, ed = 255, 0
+    else:
+        st, ed = 0, 255
+    mask = np.linspace(st, ed, 1024).reshape((32, 32)).astype(np.uint8)
+    if(kwargs.get("t")):
+        mask = mask.transpose()
+    mask = Image.fromarray(mask).resize((w, h))
+    
+    s, o = get_user_entries(message.sender.id)
+    PP = PromptProcessor(" ".join(args), s+o)
+
+    t = DiffuserFastAPITicket("inpaint")
+    t.param(prompt=PP.raw, mode=1)
+    t.upload_image(orig_image)
+    t.upload_image(mask, "mask_image")
+    sub = t.submit()
+    eta = sub["data"]["eta"]
+    
+    eta_this = sub["data"]["eta_this"]
+    thr = get_throttle(message)
+    thr.add(eta_this)
+    
+    mes = [PP.illust(orig=orig_image, mask=mask), "预计%.1f秒"%eta]
+    simple_send(mes)
+    im = t.get_image()
+    sent_image[message.sender.id] = im
+    simple_send(im)
+
 def do_search_tag(message: CQMessage, kwd, topk = 10, **kwargs):
     uid = message.sender.id
     sd, od = get_user_entries_dict(uid)
@@ -625,7 +692,7 @@ def do_img2img(message, orig_image, *args, **kwargs):
     params["prompt"] = PP.raw
     params["guidance"] = g
     params["ddim_noise"] = ddim_noise
-
+    params["loras"] = ",".join(kwargs.get("loras", []))
     tickets = []
     num = int(kwargs.get("n", 1))
     thr = get_throttle(message)
@@ -731,10 +798,13 @@ def cmd_continue_img2img_v3(message: CQMessage, *args, **kwargs):
     else:
         orig_image = sent_image[message.sender.id]
     return do_img2img(message, orig_image, *args, **kwargs)
+
+img2img_opts = {"-loras", "-guidance", "-g", "-strength", "-s", "-noise", "-n", "-debug", "-roll", "-roll_from", "-hytk"}
+img2img_ls_ops = {"-loras", "-roll_from"}
 @receiver
 @threading_run
 @on_exception_response
-@command("[/~～]以图画图", opts={"-guidance", "-g", "-strength", "-s", "-noise", "-n", "-debug", "-roll", "-roll_from", "-hytk"}, bool_opts = {"-roll", "-debug", "-hytk"}, ls_opts = {"-roll_from"})
+@command("[/~～]以图画图", opts=img2img_opts, bool_opts = {"-roll", "-debug", "-hytk"}, ls_opts = img2img_ls_ops)
 def cmd_img2img_v3(message: CQMessage, *args, **kwargs):
     if(message.get_reply_image()):
         orig_image = message.get_reply_image()
@@ -781,7 +851,29 @@ def roll_prompt_from(uid, args):
     ret = ret.replace("  ", " ")
     k = PromptProcessor(ret, s+o).friendly_raw
     return k, ret
-def do_txt2img(message: CQMessage, *args, roll=False, **kwargs):
+
+def get_config(message, key, default, value=None):
+    uid = message.sender.id
+    cfg = user_config.get(uid, {})
+    if(value is not None):
+        cfg[key] = value
+    ret = cfg.get(key, default)
+    user_config[uid] = cfg
+    return ret
+def gen_noise_image(w=512, h=512, arr=None, seed=None):
+    def scale_min_max(arr: np.ndarray, lo=0, hi=1):
+        mn = arr.min()
+        mx = arr.max()
+        return (arr-mn)/(mx-mn)*(hi-lo)+lo
+    if(seed is not None):
+        np.random.seed(seed)
+    shape=(h//8, w//8, 4)
+    if(arr is None):
+        arr = np.random.normal(0, 1, shape)
+    arr = scale_min_max(arr, 0, 255).astype(np.uint8)
+    img = Image.fromarray(arr)
+    return img
+def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, **kwargs):
     prompt = " ".join(args)
     uid = message.sender.id
     s, o=get_user_entries(message.sender.id)
@@ -794,12 +886,35 @@ def do_txt2img(message: CQMessage, *args, roll=False, **kwargs):
     guidance = kwargs.get("g") or kwargs.get("guidance") or 12
     guidance = float(guidance)
 
-    aspect = float(kwargs.get("a", 9/16))
+    aspect = get_config(message, "aspect", 9/16, kwargs.get("a"))
+    if(isinstance(aspect, str)):
+        if(":" in aspect):
+            a, b = aspect.split(":")
+            aspect = float(a)/float(b)
+        else:
+            aspect = float(aspect)
 
-    params = kwa(prompt=PP.raw, aspect=aspect, guidance=guidance)
+    unets = kwargs.get("unets", "")
+    vaes = kwargs.get("vaes", "")
+
+    params = kwa(prompt=PP.raw,
+        aspect=aspect,
+        guidance=guidance,unets=unets,
+        vaes=vaes,
+        loras=",".join(kwargs.get("loras", []))
+    )
 
     tickets = []
     rolled = []
+    if(kwargs.get("seed")):
+        seed = kwargs["seed"]
+        if(seed.isnumeric()):
+            seed = int(seed)
+        else:
+            seed = hashi(seed, length=32)
+        np.random.seed(seed)
+    else:
+        seed = None
     for i in range(n):
         t = DiffuserFastAPITicket("txt2img")
         if(roll):
@@ -811,6 +926,9 @@ def do_txt2img(message: CQMessage, *args, roll=False, **kwargs):
             params["prompt"] = PP.raw+", "+v
             rolled.append(k)
         t.param(**params)
+        if(seed is not None):
+            noise = gen_noise_image(1024, 1024)
+            t.upload_image(noise, "noise_image")
         tickets.append(t)
     if(rolled):
         im = PP.illust(roll="\n".join(rolled))
@@ -820,7 +938,8 @@ def do_txt2img(message: CQMessage, *args, roll=False, **kwargs):
         submit = t.submit()
         eta = submit["data"]["eta"]*(n-idx)
         mes = [im, "%d/%d预计剩余%.2f秒"%(idx, n, eta)]
-        simple_send(mes)
+        if(verbose>=1):
+            simple_send(mes)
         im = t.get_image()
         img_prompt[im] = t["prompt"]
     simple_send(im)
@@ -1170,10 +1289,25 @@ def do_most_similar(message: CQMessage, xs, ys, *args, **kwargs):
     if(last_report!=cnt):
         partial_report()
 
+class PromptSearchEntry:
+    def __init__(self, key, value, is_self, sim_key, sim_value=None, rnd=0):
+        self.key = key
+        self.value = value
+        self.is_self = is_self
+        self.sim = LCS(key, sim_key).get_common_ratio(0.25)
+        if(self.sim_value):
+            _ = LCS(value, sim_value).get_common_ratio(0.25)
+            self.sim = max(self.sim, _)
+        self.rnd = random.random()*rnd
+    @property
+    def cmpkey(self):
+        return (not self.is_self, self.sim, self.rnd, self.key, self.value)
+    def __lt__(self, other):
+        return self.cmpkey < other.cmpkey
 @receiver
 @threading_run
 @on_exception_response
-@command("[/~～]列出标签", opts={"-p"})
+@command("[/~～]列出标签", opts={"-p", "-rnd"}, bool_opts={'-rnd'})
 def cmd_show_all_tags(message: CQMessage, *args, **kwargs):
     key = " ".join(args)
     if(not key):
@@ -1186,10 +1320,11 @@ def cmd_show_all_tags(message: CQMessage, *args, **kwargs):
     entries = []
     rank = sorted(s+o+[(key, val)])
     rank = {i[0]: idx for idx, i in enumerate(rank)}
+    rnd = lambda:random.random() if kwargs.get("-rnd") else 1
     for idx, i in enumerate(s):
         k, v = i
         score = LCS(key, k).get_common_ratio(0.5)
-        rankscore = abs(rank[k] - rank[key])
+        rankscore = abs(rank[k] - rank[key])*rnd()
         if(search_detail):
             score1 = do_diff(message, val, v, send=False)
             score = max(score, score1)
@@ -1200,7 +1335,7 @@ def cmd_show_all_tags(message: CQMessage, *args, **kwargs):
     for idx, i in enumerate(o):
         k, v = i
         score = LCS(key, k).get_common_ratio(0.5)
-        rankscore = abs(rank[k] - rank[key])
+        rankscore = abs(rank[k] - rank[key])*rnd()
         if(search_detail):
             score1 = do_diff(message, val, v, send=False)
             score = max(score, score1)
@@ -1262,7 +1397,6 @@ def cmd_prompt_process(message: CQMessage, *args, **kwargs):
                 ys = [ys]
         xs = list(set(xs))
         ys = list(set(ys))
-        print("DEBUG: most_sim:1179")
         do_most_similar(message, xs, ys)
     elif(False and kwargs.get("most_similar")):
         s, o = get_user_entries(message.sender.id)
@@ -1361,7 +1495,21 @@ def cmd_prompt_process(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("[/~～]画图", opts={'-guidance', "-g", "-aspect", "-a", "-n", "-roll", "-roll_from", "-exc"}, bool_opts={"-roll"}, ls_opts = {"-roll_from", "-exc"})
+@command("[/~～]可用模型", opts={})
+def cmd_available_models(message: CQMessage, *args, **kwargs):
+    url = "/".join([HOST, "status"])
+    models = requests.get(url).json()["data"]["models"]
+    loras = requests.get(url).json()["data"]["loras"]
+    mes = "模型: %s\nLoRA: %s"%(
+        ", ".join(models),
+        ", ".join(loras)
+    )
+    simple_send(mes)
+
+@receiver
+@threading_run
+@on_exception_response
+@command("[/~～]画图", opts={"-seed", '-guidance', "-g", "-aspect", "-a", "-n", "-roll", "-roll_from", "-exc", "-unets", "-vaes", "-loras"}, bool_opts={"-roll"}, ls_opts = {"-roll_from", "-exc", "-loras"})
 def cmd_aidraw_v3(message: CQMessage, *args, **kwargs):
     return do_txt2img(message, *args, **kwargs)
     uid = message.sender.id
@@ -1573,6 +1721,7 @@ def cmd_upscale(message:CQMessage, *args, **kwargs):
 @on_exception_response
 @command("[/~～]今日老婆", opts = {})
 def cmd_today_aidraw(message:CQMessage, *args, **kwargs):
+    return
     user = message.sender.id
     today = now().strftime("%Y%m%d")
     key = "%s-%s" % (user, today)
@@ -1586,60 +1735,101 @@ def cmd_today_aidraw(message:CQMessage, *args, **kwargs):
     t = DiffuserFastAPITicket("txt2img")
     t.param(prompt=PP.ordered)
     simple_send(t.get_image())
+orig_pics = dict()
+mask_pics = dict()
+diff_pics = dict()
+@receiver
+@threading_run
+@on_exception_response
+@command("/设为原图", opts={})
+def cmd_set_orig(message: CQMessage, *args, **kwargs):
+    if(message.get_reply_image()):
+        im = message.get_reply_image()
+    else:
+        imgtype, im = message.get_sent_images()[0]
+    orig_pics[message.sender.id] = im
+    simple_send("设了")
+    uid = message.sender.id
+    if(uid in diff_pics and uid in orig_pics):
+        op = orig_pics[uid]
+        im = diff_pics[uid]
+        mask = mask_pics[message.sender.id]
+        c = Column([Row([op, im]), mask])
+        simple_send(c.render())
+@receiver
+@threading_run
+@on_exception_response
+@command("/设为遮罩", opts={"-s", "-smooth", "-smin"})
+def cmd_set_diff(message: CQMessage, *args, **kwargs):
+    s = float(kwargs.get("s", 0.9))
+    smin = float(kwargs.get("smin", 0.4))
+    sm = float(kwargs.get('smooth', 1))
+    uid = message.sender.id
+    if(message.get_reply_image()):
+        im = message.get_reply_image()
+    else:
+        imgtype, im = message.get_sent_images()[0]
+    
+    w, h = im.size
+    rad = (w*h)**0.5
+    op = orig_pics[message.sender.id].convert("RGB")
+    im = im.resize(op.size).convert("RGB")
+    diff_pics[message.sender.id] = im
+    arr1 = np.array(op).astype(np.float32)
+    arr2 = np.array(im).astype(np.float32)
+    diff = (arr1-arr2)**2
+    diff = np.sqrt(diff.sum(axis=-1, keepdims=False)+1e-6)
+    diff = (diff-diff.min())/(diff.max()-diff.min()+1e-6)*255
+    
+    diff = Image.fromarray(diff.astype(np.uint8))
+    diff = diff.filter(ImageFilter.GaussianBlur(rad/40*sm))
+    diff = np.array(diff)
+    diff = (diff-diff.min())/(diff.max()-diff.min()+1e-6)
+
+    thresh = 0.1
+    diff1 = diff
+    diff1 = (diff1-thresh)/(1-thresh)*(s-smin)+smin
+    diff = (diff*(diff<thresh)+(diff1*(diff>=thresh)))*255
+
+    ret = Image.fromarray(diff.astype(np.uint8))
+    ret = ret.filter(ImageFilter.GaussianBlur(rad/40*sm))
+    mask_pics[message.sender.id] = ret
+    if(uid in diff_pics and uid in orig_pics):
+        op = orig_pics[uid]
+        im = diff_pics[uid]
+        c = Column([Row([op, im]), ret])
+        simple_send(c.render())
+# @receiver
+# @threading_run
+# @on_exception_response
+# @command("[/~～]")
 
 @receiver
 @threading_run
 @on_exception_response
-@command("[/~～]inpaint", opts={"-p", "-smooth"}, ls_opts={"-p"})
+@command("[/~～]inpaint", opts={"-p", "-smooth", "-use_mask"}, ls_opts={"-p"}, bool_opts={'-use_mask'})
 def cmd_inpaint_v3(message:CQMessage, *args, **kwargs):
+    # if(message.get_reply_image()):
+    #     orig_image = message.get_reply_image()
+    # else:
+    #     imgtype, orig_image = message.get_sent_images()[0]
+    uid = message.sender.id
+    op = orig_pics[uid]
+    df = diff_pics[uid].resize(op.size, Image.Resampling.LANCZOS).convert(op.mode)
+    orig_image = Image.blend(op, df, 0.8)
     s, o=get_user_entries(message.sender.id)
     PP = PromptProcessor(" ".join(args), s+o)
     PP_ill = PP.illust()
     last_prompt[message.sender.id] = PP.raw
-
-    W=100
-    mask = np.zeros((W, W), np.float16)
     
-    for p in kwargs.get("p", list()):
-        params = [0, 1, 0, 1, 1, 0.95]
-        if(p=="center"):
-            p = "0.3:0.7:0.3:0.7"
-        elif(p=="lower"):
-            p = "0:1:0.5:1"
-        elif(p=="upper"):
-            p = "0:1:0:0.5"
-        elif(p=="left"):
-            p = "0:0.5"
-        elif(p=="right"):
-            p = "0.5:1"
-        for idx, i in enumerate(p.split(":")):
-            i=float(i.strip())
-            params[idx]=i
-        le, ri, up, lo, x, s = params
-        le, ri, up, lo = map(lambda x:int(x*W), [le, ri, up, lo])
-        mask[le:ri, up:lo] = mask[le:ri, up:lo]*(1-s) + s*x
-    mask = (mask.swapaxes(0, 1)*255).astype(np.uint8)
-    if(not np.any(mask)):
-        simple_send("没有指定绘画区域")
-        return
-
-    if(message.get_reply_image()):
-        orig_image = message.get_reply_image()
-    else:
-        imgtype, orig_image = message.get_sent_images()[0]
-
-    mask = Image.fromarray(mask).resize(orig_image.size)
-    w, h=mask.size
-    rad = (w*h)**0.5
-    if(kwargs.get("smooth")):
-        smooth_mask = float(kwargs.get("smooth"))
-    else:
-        smooth_mask = 1
-    mask=mask.filter(ImageFilter.GaussianBlur(rad/40*smooth_mask))
+    # orig_image = orig_pics[message.sender.id]
+    mask = mask_pics[message.sender.id].resize(orig_image.size, Image.Resampling.LANCZOS)
+    
     orig_invert = np.array(orig_image)
     orig_invert = 255*(orig_invert<128)
     orig_invert = Image.fromarray(orig_invert.astype(np.uint8))
     orig_shown = orig_image.copy()
+    # simple_send("%s %s %s"%(orig_shown, orig_invert, mask))
     orig_shown.paste(orig_invert, mask=mask)
 
     

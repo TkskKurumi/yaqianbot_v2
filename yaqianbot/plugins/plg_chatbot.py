@@ -17,7 +17,7 @@ import random
 from ..utils.algorithms import lower_bound
 from .plg_admin import link
 from . import plg_chatbot_record
-from ..utils.candy import simple_send
+from ..utils.candy import simple_send, print_time
 import time
 
 
@@ -193,28 +193,33 @@ def send_chat(message, chat):
 
 @receiver
 @threading_run
-@on_exception_response
 @is_ated
+@on_exception_response
 def response_ated(message):
-    
-    if(message.plain_text):
+    def ask(prompt, db=saved_chats):
+        chat = get_chat(prompt, db=db, debug=False)
+        return chat
+    pt = message.plain_text.strip()
+    if(pt):
         database = {}
-        database.update(get_db_from_group(message.group, max_nocache = 150))
-        # print(get_db_from_group(message.group, max_nocache = 50))
-        for i, j in saved_chats.items():
-            database[i]=j
-        chat = get_chat(message.plain_text, db=database, debug=False)
+        database.update(saved_chats._asdict())
+        database.update(get_db_from_group(message.group, max_nocache = 250))
+        
+        ls = list(plg_chatbot_record.db)
+        random.shuffle(ls)
+        for idx, g in enumerate(ls):
+            database.update(get_db_from_group(g, max_nocache=25, exclude_type="reply;at,image"))
+            if(idx>5):
+                chat = ask(pt, database)
+                if(chat is not None):
+                    break
+        chat = ask(pt, database)
+        
         # message.response_sync(message.plain_text)
         if(chat is not None):
             mes = chat.response
             mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
             message.response_sync(mes)
-        else:
-            chat = get_chat("没有回答")
-            if(chat is not None):
-                mes = chat.response
-                mes = replace(mes, "%chatbot_img_path%", chatbot_img_path)
-                message.response_sync(mes)
 
 
 @receiver
@@ -228,13 +233,19 @@ def cmd_view_pending_chat(message):
 record_chat_cache = {}
 
 
-def mes_pair_as_chat(mesi, mesj):
+def mes_pair_as_chat(mesi, mesj, exclude_type="reply;at"):
     key = (mesi.raw.get("message_seq"), mesj.raw.get("message_seq"))
     if(key in record_chat_cache):
         return 1, key, record_chat_cache[key]
     else:
         q = mesi.plain_text
         r = mesj.get_mseg_list()
+        _r = []
+        for i in r:
+            type = i.get("type")
+            if(type in exclude_type):continue
+            _r.append(i)
+        r = _r
         if(not r):
             return None
         ret = Chat(q, r)
@@ -242,33 +253,34 @@ def mes_pair_as_chat(mesi, mesj):
         return 0, key, ret
 
 
-def get_db_from_group(group, max_nocache=100):
-    com, buf = plg_chatbot_record.get_mes_record(group)
-    messages = com+buf
-    messages = messages[::-1]
-    prune = max_nocache
-    ret = {}
-    
-    for jdx, j in enumerate(messages[:-1]):
-        # j = messages[idx+1]
-        i = messages[jdx+1]
-        mesi = CQMessage.from_cq(i)
-        if(not mesi.plain_text):
-            continue
-        mesj = CQMessage.from_cq(j)
-        j_text = mesj.plain_text
-        if(len(j_text)>300):
-            continue
-        chat = mes_pair_as_chat(mesi, mesj)
-        if(not chat):
-            continue
-        is_cached, key, chat = chat
-        ret[key] = chat
-        prune -= 1-is_cached
-        if(prune <= 0):
-            print("Info: Lazy processing Chat record for group %s, %d/%d is processed"%(group, jdx, len(messages)-1))
-            break
-    return ret
+def get_db_from_group(group, max_nocache=100, exclude_type="at,reply"):
+    with print_time("get message record db"):
+        com, buf = plg_chatbot_record.get_mes_record(group)
+        messages = com+buf
+        messages = messages[::-1]
+        prune = max_nocache
+        ret = {}
+        
+        for jdx, j in enumerate(messages[:-2]):
+            # j = messages[idx+1]
+            i = messages[jdx+1]
+            mesi = CQMessage.from_cq(i)
+            if(not mesi.plain_text):
+                continue
+            mesj = CQMessage.from_cq(j)
+            j_text = mesj.plain_text
+            if(len(j_text)>300):
+                continue
+            chat = mes_pair_as_chat(mesi, mesj, exclude_type=exclude_type)
+            if(not chat):
+                continue
+            is_cached, key, chat = chat
+            ret[key] = chat
+            prune -= 1-is_cached
+            if(prune <= 0):
+                print("Info: Lazy processing Chat record for group %s, %d/%d is processed"%(group, jdx, len(messages)-1))
+                break
+        return ret
 
 
 @receiver
