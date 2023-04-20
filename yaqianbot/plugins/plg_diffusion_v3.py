@@ -31,6 +31,11 @@ from .plg_diffusion_prompt_processor import PromptProcessor as PPv2
 from ..utils.candy import locked
 import math
 import time
+
+force_tag = TypedLevelDB.open(
+    path.join(mainpth, "saves", "plg_diffusion_v3", "force_tag")
+)
+
 user_tag_db = TypedLevelDB.open(
     path.join(mainpth, "saves", "plg_diffusion_v3", "user_tags"))
 
@@ -499,6 +504,27 @@ def illust_entries(self_e, other_e):
     return Column(itms, bg=(255,)*3).render()
 @receiver
 @threading_run
+@is_su
+@on_exception_response
+@command("/强制标签", opts={"-g"})
+def cmd_diffusion_set(message: CQMessage, *args, **kwargs):
+    
+    if(kwargs.get("g")):
+        g = kwargs["g"]
+    else:
+        g = str(message.group)
+    if(args):
+        s, o = get_user_entries(message.sender.id)
+        PP = PromptProcessor(" ".join(args), s+o)
+        force_tag[g] = PP.raw
+        simple_send("设%s为了%s"%(g, PP.raw))
+    else:
+        force_tag.pop(g, None)
+        simple_send("删除了")
+
+
+@receiver
+@threading_run
 @on_exception_response
 @command("/测试", opts={"-t", "-r"}, bool_opts={"-t", "-r"})
 def cmd_test(message: CQMessage, *args, **kwargs):
@@ -653,6 +679,7 @@ def cmd_tag_alias_v3(message: CQMessage, *args, **kwargs):
 
 def do_img2img(message, orig_image, *args, **kwargs):
     uid = message.sender.id
+    
     t = DiffuserFastAPITicket("img2img")
     # imgtype, orig_image = message.get_sent_images()[0]
 
@@ -665,7 +692,8 @@ def do_img2img(message, orig_image, *args, **kwargs):
             return simple_send("请输入prompt")
     else:
         prompt = " ".join(args)
-
+    if(message.group in force_tag):
+        prompt += ", "+force_tag[message.group]
     strength = kwargs.get("s") or kwargs.get("strength")
     if(strength is None):
         strength = 0.68
@@ -875,6 +903,8 @@ def gen_noise_image(w=512, h=512, arr=None, seed=None):
     return img
 def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, **kwargs):
     prompt = " ".join(args)
+    if(message.group in force_tag):
+        prompt += ", "+force_tag[message.group]
     uid = message.sender.id
     s, o=get_user_entries(message.sender.id)
     exc = " ".join(kwargs.get("exc", list()))
@@ -1799,11 +1829,84 @@ def cmd_set_diff(message: CQMessage, *args, **kwargs):
         im = diff_pics[uid]
         c = Column([Row([op, im]), ret])
         simple_send(c.render())
-# @receiver
-# @threading_run
-# @on_exception_response
-# @command("[/~～]")
 
+def arr_as_im(arr, lo=0, hi=255):
+    arr = (arr-arr.min())/(arr.max()-arr.min()+1e-10)
+    arr = arr*(hi-lo)+lo
+    return Image.fromarray(arr.astype(np.uint8))
+def im_blur(im, strength=1):
+    w, h = im.size
+    rad = (w*w+h*h)**0.5
+    im = im.filter(ImageFilter.GaussianBlur(rad/300*strength))
+    return im
+def arr_thresh(arr, lo):
+    return arr*(arr>lo)
+@receiver
+@threading_run
+@on_exception_response
+@command("/部分重画", opts={"-temperature", "-lo", "-hi", "-blur"})
+def cmd_inpaint_v35(message: CQMessage, *args, **kwargs):
+    from .plg_face import base_images
+    uid = message.sender.id
+    if(uid in base_images):
+        base_image = base_images[uid]
+    else:
+        simple_send("未知原图")
+        return
+    if(message.get_reply_image()):
+        new_image = message.get_reply_image()
+    else:
+        imgtype, new_image = message.get_sent_images()[0]
+
+    tempr = float(kwargs.get("temperature", 1))*0.7
+    lo = float(kwargs.get("lo", 0))
+    hi = float(kwargs.get("hi", 1))
+    blur = float(kwargs.get("-blur", 1))*2
+    thresh = 0.01
+
+    base_image = base_image.convert("RGB")
+    new_image = new_image.convert("RGB").resize(base_image.size)
+
+    base_arr = np.array(base_image).astype(np.float32)
+    new_arr = np.array(new_image).astype(np.float32)
+    
+    mask_arr = np.abs(new_arr.sum(axis=-1)-base_arr.sum(axis=-1))
+    mask_blur0 = im_blur(arr_as_im(mask_arr), blur)
+    mask_arr = np.array(mask_blur0).astype(np.float32)/255
+    mask_arr = arr_thresh(mask_arr, thresh)
+    mask_blur1 = im_blur(arr_as_im(mask_arr), blur)
+    mask_arr = np.array(mask_blur1).astype(np.float32)
+
+    mask_arr = mask_arr-mask_arr.mean()
+    mask_arr = mask_arr*((np.abs(mask_arr)+1e-10)**(tempr-1))
+    mask_blur2 = im_blur(arr_as_im(mask_arr), blur)
+    mask_arr = np.array(mask_blur2).astype(np.float32)
+    mask_arr = (mask_arr-mask_arr.min())/(mask_arr.max()-mask_arr.min()+1e-10)
+    mask_arr = mask_arr*(hi-lo) + lo
+    mask_image = Image.fromarray((mask_arr*255).astype(np.uint8))
+
+    s, o=get_user_entries(message.sender.id)
+    PP = PromptProcessor(" ".join(args), s+o)
+    _new_image = base_image.copy()
+    _new_image.paste(new_image, mask=mask_image)
+    new_image = _new_image
+    
+    t = DiffuserFastAPITicket("inpaint")
+    t.param(prompt=PP.raw, mode=1)
+    t.upload_image(new_image)
+    t.upload_image(mask_image, "mask_image")
+    sub = t.submit()
+    eta = sub["data"]["eta"]
+    
+    eta_this = sub["data"]["eta_this"]
+    thr = get_throttle(message)
+    thr.add(eta_this)
+    
+    mes = [PP.illust(orig=base_image, newim=new_image, mask=mask_image), "预计%.1f秒"%eta]
+    simple_send(mes)
+    im = t.get_image()
+    sent_image[message.sender.id] = im
+    simple_send(im)
 @receiver
 @threading_run
 @on_exception_response

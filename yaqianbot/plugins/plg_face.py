@@ -1,3 +1,4 @@
+from functools import partial
 from ..backend.cqhttp.message import mes_str2arr
 from ..backend.receiver_decos import on_exception_response, command
 from ..backend import receiver, startswith
@@ -535,7 +536,7 @@ def cmd_luxunrt(message, *args, **kwargs):
         # print(mes)
     content = []
     url = r"https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQHs3ZdlhN-jfFjxKVcLrkP4F3d-bE2qEL6jQ&usqp=CAU"
-
+    url = r"https://bkimg.cdn.bcebos.com/pic/7c1ed21b0ef41bd5ad6e6cee5a9496cb39dbb6fd97d1?x-bce-process=image/resize,m_lfit,w_536,limit_1"
     luxun = get_image(url)[1].convert("RGBA")
     w, h = luxun.size
     # print(mes)
@@ -593,4 +594,106 @@ def cmd_contour(message, *args, **kwargs):
     norm = (diff-mn)/(mx-mn)
     arr_grey = (255-norm*255).astype(np.uint8)
     im = Image.fromarray(arr_grey)
+    simple_send(im)
+
+base_images = {}
+@receiver
+@threading_run
+@on_exception_response
+@command("/底图", opts={})
+def cmd_face_set_base(message: CQMessage, *args, **kwargs):
+    if(message.get_reply_image()):
+        image = message.get_reply_image()
+    else:
+        imgtype, image = message.get_sent_images()[0]
+    base_images[message.sender.id] = image
+    simple_send(image)
+@receiver
+@threading_run
+@on_exception_response
+@command("/马赛克叠图", opts={})
+def cmd_face_mosaic_compose(message: CQMessage, *args, **kwargs):
+    img0 = base_images[message.sender.id]
+    if(message.get_reply_image()):
+        img1 = message.get_reply_image()
+    else:
+        imgtype, img1 = message.get_sent_images()[0]
+    arr0 = np.array(img0.convert("RGB"))
+    arr1 = np.array(img1.resize(img0.size).convert("RGB"))
+    def fit_range(arr: np.ndarray, lo=0, hi=1):
+        ret = (arr-arr.min())/(arr.max()-arr.min()+1e-10)
+        return ret*(hi-lo)+lo
+    def fit_mean(arr: np.ndarray, mean=0, mn=0, mx=255):
+        ret = arr-arr.mean()
+        # mn < ret + mean < mx
+        # mn-mean < ret < mx - mean
+        scale = np.maximum(1, np.maximum(ret+mean-mn, mx-mean-ret))
+        ret = ret/scale+mean
+        return ret
+
+    def f(arr0: np.ndarray, arr1):
+        h, w, ch=arr0.shape
+        ratio = (1000/w/h)**0.5
+        tile_h, tile_w = int(h*ratio), int(w*ratio)
+        tile_size = min(h//tile_h, w//tile_w)
+        ret = np.zeros((tile_h*tile_size, tile_w*tile_size, ch), np.float32)
+        for x in range(tile_w):
+            
+            for y in range(tile_h):
+                left = x*tile_size
+                top = y*tile_size
+                tile0 = arr0[top:top+tile_size, left:left+tile_size, :]
+                tile1 = arr1[top:top+tile_size, left:left+tile_size, :]
+                color = tile0.mean(axis=0, keepdims=True).mean(axis=1, keepdims=True)
+                rge = np.minimum(color, 255-color)
+                texture = fit_mean(tile1, 0, -rge, rge)
+                tile = color+texture
+                ret[top:top+tile_size, left:left+tile_size, :] = tile
+        return ret
+    arr = f(arr0, arr1)
+    im = Image.fromarray(arr.astype(np.uint8))
+    simple_send(im)
+    
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/鱼眼", opts={"-s"})
+def cmd_yuyan(message: CQMessage, *args, **kwargs):
+    
+    from ..utils.image.background import arangexy
+    import numpy as np
+    _, im = message.get_sent_images()[0]
+    w, h = im.size
+    tmp = [0.5, 0.5]
+    for idx, i in enumerate(args):
+        if(idx<2):
+            tmp[idx] = float(i)
+    x, y = tmp
+    cx, cy = w*x, h*y
+    diam = (w*h)**0.5
+    yxs = arangexy(w, h)
+    dist = yxs-(cy, cx)
+    dist = (dist**2).sum(axis=-1, keepdims = True)**0.5
+    def sigmoid(x, np=np):
+        exp = np.exp(-x)
+        return 1/(1+exp)
+    s = float(kwargs.get("s", 1))
+    rate = sigmoid(dist/diam/s*3)*2-1
+
+    # simple_send("%.3f, %.3f"%(rate.min(), rate.max()))
+    yxs = (yxs*rate+np.array((cy, cx))*(1-rate)).astype(np.int32)
+    ys, xs = yxs[:, : ,0], yxs[:, :, 1]
+    def foo(y, x, arr):
+        # print(y, x)
+        return arr[y, x]
+    imarr = np.array(im)
+    channels = []
+    for ch in range(imarr.shape[-1]):
+        f = partial(foo, arr = imarr[:,:,ch])
+        channels.append(np.vectorize(f)(ys, xs))
+    meow = np.stack(channels, axis=-1)
+    # simple_send("%s %s"%(meow.dtype, meow.shape))
+    im = Image.fromarray(meow)
     simple_send(im)
