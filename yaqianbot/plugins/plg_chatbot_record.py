@@ -24,7 +24,7 @@ def get_mes_record(group_id):
                 commited[group_id] = []
         return commited[group_id], buffers[group_id]
 BUFF_SIZE = 64
-WINDOW_SIZE = 1024
+WINDOW_SIZE = 16384
 def set_mes_record(group_id, com, buf, force_commit = False):
     with lckpool.locked(group_id):
         if(len(buf)>BUFF_SIZE or force_commit):

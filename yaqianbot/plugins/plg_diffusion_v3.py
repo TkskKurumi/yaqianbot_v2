@@ -519,7 +519,7 @@ def cmd_diffusion_set(message: CQMessage, *args, **kwargs):
         force_tag[g] = PP.raw
         simple_send("设%s为了%s"%(g, PP.raw))
     else:
-        force_tag.pop(g, None)
+        force_tag[g] = ""
         simple_send("删除了")
 
 
@@ -1907,6 +1907,58 @@ def cmd_inpaint_v35(message: CQMessage, *args, **kwargs):
     im = t.get_image()
     sent_image[message.sender.id] = im
     simple_send(im)
+
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/outpaint|/扩画", opts={"-r"})
+def cmd_outpaint_v3(message: CQMessage, *args, **kwargs):
+    if(message.get_reply_image()):
+        image = message.get_reply_image()
+    else:
+        imgtype, image = message.get_sent_images()[0]
+    w, h = image.size
+    ratio = max(1,float(kwargs.get("r", 1.2)))
+    alignx, aligny = 0.5, 0.5
+    w1, h1 = int(w*ratio), int(h*ratio)
+    left, top = int((w1-w)*alignx), int((h1-h)*aligny)
+    def new(w=w1, h=h1, mode="L", c=0):
+        if(mode=="RGB" and isinstance(c, int)):
+            c = (c,)*3
+        return Image.new(mode, (w, h), c)
+    base = image.resize((w1, h1), Image.LANCZOS)
+    basep = base.copy()
+    maskInner = new(c=0)
+    maskInner.paste(new(w=w, h=h, c=255), box=(left, top))
+    maskOuter = new(c=255)
+    maskOuter.paste(new(w=w, h=h, c=0), box=(left, top))
+
+    basep.paste(image, box=(left, top))
+
+    maskInner = im_blur(maskInner, 5)
+    maskOuter = im_blur(maskOuter, 5)
+    base.paste(basep, mask=maskInner)
+
+    s, o=get_user_entries(message.sender.id)
+    PP = PromptProcessor(" ".join(args), s+o)
+    
+    t = DiffuserFastAPITicket("inpaint")
+    t.param(prompt=PP.raw, mode=1)
+    t.upload_image(base)
+    t.upload_image(maskOuter, "mask_image")
+    sub = t.submit()
+    eta = sub["data"]["eta"]
+
+    mes = [PP.illust(orig=base, newim=maskOuter), "预计%.1f秒"%eta]
+    simple_send(mes)
+    im = t.get_image()
+    sent_image[message.sender.id] = im
+    simple_send(im)
+    
+    
+
 @receiver
 @threading_run
 @on_exception_response
