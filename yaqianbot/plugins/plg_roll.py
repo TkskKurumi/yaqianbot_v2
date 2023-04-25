@@ -4,7 +4,7 @@ from ..backend.cqhttp import CQMessage
 import re
 import random
 from ..utils import after_match
-
+from ..backend.receiver_decos import *
 from ..utils.candy import simple_send
 from ..utils.make_gif import make_gif
 from PIL import Image, ImageDraw
@@ -62,6 +62,24 @@ def cmd_coin(message: CQMessage):
     gif = make_gif(frames, fps=fps)
     simple_send(gif)
 
+@receiver
+@threading_run
+@on_exception_response
+@command("问", opts={})
+def cmd_roll_ask(message: CQMessage, *args, **kwargs):
+    if(not args):
+        return
+    orig = message.plain_text
+    ret = orig
+    idx = 1
+    while(idx<len(orig)-1):
+        if(ret[idx]=="不"):
+            if(ret[idx-1]==ret[idx+1]):
+                le, mid, ri = ret[:idx-1], ret[idx-1:idx+2], ret[idx+2:]
+                mid = random.choice([mid, mid[1:]])
+                ret = "".join([le, mid, ri])
+    if(ret!=orig):
+        simple_send(ret)
 
 
 @receiver
