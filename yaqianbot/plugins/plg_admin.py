@@ -21,7 +21,7 @@ def link_print_exc(content):
         nonlocal content
         RT = RichText([content], width=512, fontSize=14, fill=(
             0, 0, 0, 255), bg=(255,)*4, autoSplit=False)
-        message.response_async(RT.render())
+        return message.response_sync(RT.render())
     return link(str(content), inner)
 
 
@@ -36,7 +36,7 @@ def link_send_content(content):
 @threading_run
 def cmd_handle_lnk(message: Message):
     if(message.plain_text in lnks):
-        lnks[message.plain_text](message)
+        return lnks[message.plain_text](message)
 
 
 @receiver
