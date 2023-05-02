@@ -51,15 +51,20 @@ def send_pic_if_long(message, contents):
     else:
         return simple_send(contents)
 def send(message, response):
+    
     j = response.json()
     data = j["data"]
     contents = data["contents"]
     full = data["full_history"]
     prev = full[:-len(contents)]
+    RT = RichText(Keyword("contents"), width=512, bg=(255,)*4)
     FS = 36
+    if(not prev):
+        B = RT.render(contents=[contents], fill=(0, 0, 0, 255), fontSize=FS)
+        return simple_send(B)
     prev_fs = int(min(FS, max(8, FS*sqrt(len(contents)/len(prev)))))
 
-    RT = RichText(Keyword("contents"), width=512, bg=(255,)*4)
+    
     A = RT.render(contents=[prev], fill=(200, 200, 200, 255), fontSize=prev_fs)
     B = RT.render(contents=[contents], fill=(0, 0, 0, 255), fontSize=FS)
     ret = Column([A, B]).render()
@@ -101,10 +106,7 @@ Below is an instruction that describes a task. Write a response that appropriate
     if(message_id):
         cont_args[mid] = cont_arg
 
-def do_chat(message: CQMessage, prompt, from_state="new", username="Bob", botname="Alice", sep=":"):
-    global chat_args, cont_args
-    if(from_state=="new"):
-        feed_prefix = f"""
+chat_template_original = lambda username, botname, sep:f"""
 The following is a coherent verbose detailed conversation between a Chinese girl named {botname} and her friend {username}. \
 {botname} is very intelligent, creative and friendly. \
 {botname} likes to tell {username} a lot about herself and her opinions. \
@@ -118,18 +120,29 @@ The following is a coherent verbose detailed conversation between a Chinese girl
 
 {botname}{sep} 企鹅是不会飞的。企鹅的翅膀短而扁平，更像是游泳时的一对桨。企鹅的身体结构和羽毛密度也更适合在水中游泳，而不是飞行。
 """
+
+chat_template_qq = lambda username, botname, sep: f"""一下是一段{username}和{botname}之间的对话。
+"""
+
+def do_chat(message: CQMessage, prompt, from_state="new", username="Bob", botname="Alice", sep=":", template="original", n_lf=2):
+    global chat_args, cont_args
+    if(from_state=="new"):
+        if(template == "original"):
+            feed_prefix = chat_template_original(username, botname, sep)
+        elif(template=="qq"):
+            feed_prefix = chat_template_qq(username, botname, sep)
+        else:
+            feed_prefix = ""
     else:
         feed_prefix=""
+    lf = "\n"*n_lf
     data = form_args(
-        feed = feed_prefix+f"""
-{username}{sep} {prompt}
-
-{botname}{sep} 
-""",
+        feed = feed_prefix+f"""{username}{sep} {prompt}{lf}{botname}{sep} """,
         recall=['请总结以上对话的主要内容', "# Response:", "请总结以上对话内容"],
         stop_before=[f"{username}{sep}"],
         stop_at_eot=True,
-        length=250
+        adjust = {f"{username}{sep}":-0.3},
+        length=500
     )
     print(data["feed"])
     url = HOST+API_PATH+"/"+from_state
@@ -199,7 +212,7 @@ def cmd_rwkv_cont(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/chat", {"-me", "-bot", "-reset"}, bool_opts={"-reset"})
+@command("/chat", {"-me", "-bot", "-reset", "-template"}, bool_opts={"-reset"})
 def cmd_rwkv_chat(message: CQMessage, *args, **kwargs):
     prompt = process_prompt(" ".join(args))
     kwa = {}
@@ -217,5 +230,7 @@ def cmd_rwkv_chat(message: CQMessage, *args, **kwargs):
             kwa["username"] = v
         elif(k=="bot"):
             kwa["botname"] = v
+        elif(k=="template"):
+            kwa["template"] = v
         
     do_chat(message, prompt, **kwa)
