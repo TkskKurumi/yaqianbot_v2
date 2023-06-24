@@ -81,33 +81,59 @@ def img_filter(imgtype, img, filter):
 @receiver
 @threading_run
 @on_exception_response
-@startswith("/test")
-def cmd_face_test(message: CQMessage):
-    points = []
-
+@command("/卡拉比丘", opts={"-k"})
+def cmd_face_test(message: CQMessage, *args, **kwargs):
+    from ..utils.image.process import color_segmentation
+    from ..utils.image.deform import quad_point
+    from ..utils.geometry.elements import Point2d as Point
     imgtype, img = message.get_sent_images()[0]
-    w, h = img.size
-    mx = 5e4
-    if(w*h > mx):
-        img = sizefit.area(img, mx)
-        w, h = img.size
-    for i in range(300):
-        x, y = random.randrange(w), random.randrange(h)
-        points.append((x, y))
-    kdt = KDT()
-    kdt.build(points)
 
-    def f(img):
-        nonlocal w, h, kdt
-        ret = Image.new(img.mode, img.size)
-        for x in range(w):
-            for y in range(h):
-                p = KDTPoint((x, y))
-                p1, dist = kdt.ann(p, recall_alpha=0.8)
-                ox, oy = p1
-                ret.putpixel((x, y), img.getpixel((ox, oy)))
+    def italy(im):
+        s = (im.width**2 + im.height**2)**0.5
+        _, ret = quad_point(im, Point(0, 0), Point(im.width, 0), Point(-s/10, im.height), Point(im.width-s/10, im.height))
         return ret
-    message.response_sync(f(img.convert("RGB")))
+    
+    ret = Image.new("RGBA", (700, 500), (255,)*4)
+    dr = ImageDraw.Draw(ret)
+    w, h = ret.size
+    siz = (w*w+h*h)**0.5
+    fs = siz/18
+    CTR = Point(w/2, h/2)
+    rad = siz/2
+
+    ww, hh = img.size
+    
+    LL2RL = Point(1, -1.3).unit()
+    UPWARD = Point(0, -1)
+    LL = Point(w/10, h*0.9)
+    RL = LL + LL2RL*siz/3
+    neww = (RL-LL).length()
+    LU = LL + UPWARD*neww/w*h*2
+    RU = RL + UPWARD*neww/w*h*2*0.7
+
+    offset, formed = quad_point(img.convert("RGBA"), LU, RU, LL, RL, bg=(0, )*4)
+
+    for i in range(300):
+        rnd_angle = random.random()*3.14/300
+        rndc0 = random.random()*0.3+0.3
+        rndc1 = random.random()
+        A = Point(0, rad).rotate_by_angle(random.random()*3.14*2)
+        B = A.rotate_by_angle(rnd_angle)
+        C = (A*rndc1 + B*(1-rndc1))*rndc0
+
+        dr.polygon(((A+CTR).xy, (B+CTR).xy, (C+CTR).xy), fill=(0, 0, 0, 255))
+
+    ret.paste(formed, box=offset.intxy, mask=formed)
+
+    klbq = italy(RichText(["卡拉比丘"], 512, fontSize=int(fs*1.5), bg=(0, )*4).render())
+    texts = RichText(["我要成为\n", klbq, "\n高手"], 512, fontSize=int(fs), bg=(255, 255, 255, 50), alignX=0.5).render()
+    texts = italy(texts)
+    ret.paste(texts, box=(w-texts.width, 0), mask=texts)
+
+    simple_send(ret)
+
+    
+    
 
 
 @receiver

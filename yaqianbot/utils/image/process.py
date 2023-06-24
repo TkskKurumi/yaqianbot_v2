@@ -1,10 +1,11 @@
 from PIL import Image, ImageDraw, ImageFilter
 import numpy as np
-from .colors import Color
+from .colors import Color, image_colors
 from . import colors
 from math import exp
 from typing import Literal, Any
-
+import random
+from ..algorithms import kmeans
 
 def shadow(img, radius=1, color: Any = Color.from_any("BLACK"), padding=True, sharpness=2, debug=False):
     w, h = img.size
@@ -73,7 +74,62 @@ def adjust_L(im, adjust=-0.9):
     ret = Image.alpha_composite(im.convert("RGBA"), cover)
     return ret.convert(im.mode)
 
+def color_segmentation(im: Image.Image, k=3, seed=None, temperature=1, norm_area=False):
+    if(seed):
+        random.seed(seed)
+        np.random.seed(seed)
+    if(im.mode not in ["RGB", "RGBA"]):
+        im = im.convert("RGBA")
+    arr = np.array(im).astype(np.float32)
+    h, w, ch = arr.shape
+    colors = []
+    for i in range(int((w*h)**0.5)*k):
+        y, x = random.randrange(h), random.randrange(w)
+        c = im.getpixel((x, y))
+        colors.append(c)
+    colors = np.array(kmeans(colors, k))
+    print(colors)
+    # color_avg = arr.mean(axis=0).mean(axis=0)
+    color_avg = np.mean(colors, axis=0)
+    colors = colors-color_avg
+    # print(colors)
+    rets = []
+    for i in range(k):
+        c = colors[i]
+        # /np.linalg.norm(colors[i])
+        print(c)
+        # print(c, arr[0, 0], (arr[0, 0]*c).sum())
+        dot = (arr-color_avg)*c
+        # print(dot)
+        dot = dot.sum(axis=-1)
+        # print(dot)
+        rets.append(dot)
+    ret = np.stack(rets, axis=-1)
+    ret = ret-ret.mean(axis=-1, keepdims=True)
+    ret = ret/np.std(ret)*temperature
+    # ret = ret/(np.std(ret, axis=-1, keepdims=True)+1e-9)*temperature
+    
+    print(ret.max(), ret.min())
+    ex = np.exp(ret)
+    if(norm_area):
+        ex = ex/(ex.mean(axis=0, keepdims=True).mean(axis=1, keepdims=True))
+    exsum = ex.sum(axis=-1, keepdims=True)
+    return ex/exsum
+
+    return ret
+
+
+
+    
+
+
 if(__name__ == "__main__"):
-    im = Image.new("RGB", (100, 100), (255, 100, 200))
-    from .print import image_show_terminal
-    image_show_terminal(adjust_A(im, -0.5))
+    im = Image.open(r"G:\setubot-iot\2654bfb199.jpg")
+    
+    arr = color_segmentation(im, temperature=2, k=3, seed=1)[:,:,:3]
+    # print(arr)
+    arr = (arr-arr.min())/(arr.max()-arr.min())*255
+
+    im = Image.fromarray(arr.astype(np.uint8))
+
+    im.show()

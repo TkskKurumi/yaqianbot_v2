@@ -65,21 +65,25 @@ def cmd_coin(message: CQMessage):
 @receiver
 @threading_run
 @on_exception_response
-@command("问", opts={})
+@startswith("问")
 def cmd_roll_ask(message: CQMessage, *args, **kwargs):
-    if(not args):
+    orig = after_match("问", message.plain_text.strip())
+    print("问", orig)
+    if(not orig):
         return
-    orig = message.plain_text
     ret = orig
     idx = 1
     while(idx<len(orig)-1):
         if(ret[idx]=="不"):
             if(ret[idx-1]==ret[idx+1]):
                 le, mid, ri = ret[:idx-1], ret[idx-1:idx+2], ret[idx+2:]
-                mid = random.choice([mid, mid[1:]])
+                mid = random.choice([mid[0], mid[1:]])
                 ret = "".join([le, mid, ri])
     if(ret!=orig):
+        print(ret)
         simple_send(ret)
+    else:
+        print(orig, ret)
 
 
 @receiver

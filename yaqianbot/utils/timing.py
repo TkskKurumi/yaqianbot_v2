@@ -2,7 +2,33 @@ from collections import defaultdict
 from .candy import locked
 from threading import Lock
 from time import time as nowtime
-import heapq
+import heapq, time
+
+class Limit:
+    def __init__(self, period, times):
+        self.times = times
+        self.period = period
+        self.ts = []
+        self.lck = Lock()
+    def _clean(self):
+        tm = nowtime()-self.period
+        while(self.ts and self.ts[0]<tm):
+            self.ts.pop(0)
+
+    def __call__(self):
+        with self.lck:
+            self._clean()
+            if(len(self.ts)>=self.times):
+                tm = nowtime()
+                until = self.ts[-self.times]+self.period
+                assert until>=tm
+                print("Too fast, throttling %.3f seconds"%(until-tm))
+                time.sleep(until-tm)
+            self.ts.append(nowtime())
+        
+
+
+
 
 
 class speedo:
@@ -54,9 +80,13 @@ class timer:
         def prt(*args, sep=" ", end="\n"):
             ret.append(sep.join([str(_) for _ in args]))
             ret.append(end)
+        st = []
         for taskname in self.runtime:
+            itm = self[taskname], taskname
+            st.append(itm)
+        for per, taskname in sorted(st, reverse=True):
             prt('run "%s" %d times in %.2f seconds, %.2f per run' %
-                (taskname, self.runcount[taskname], self.runtime[taskname], self[taskname]))
+                (taskname, self.runcount[taskname], self.runtime[taskname], per))
         return "".join(ret)
 
     def __repr__(self):

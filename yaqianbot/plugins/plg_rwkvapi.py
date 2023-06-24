@@ -1,4 +1,5 @@
 from ..backend.cqhttp.message import CQMessage
+from ..plugins.plg_chatbot_record import get_mes_record
 from ..backend.receiver_decos import *
 from ..backend import receiver
 from ..utils.candy import lockedmethod, simple_send
@@ -6,7 +7,7 @@ from pil_functional_layout import RichText, Keyword, Row, Column
 from math import sqrt
 from urllib.parse import urlencode
 import requests
-HOST = "http://localhost:8001"
+HOST = bot_config.get("RWKV_HOST", "http://localhost:8001")
 API_PATH = "/cont"
 
 mes_from_state = {}
@@ -18,13 +19,15 @@ chat_args = {}
 
 form_args = lambda **kwargs: kwargs
 
-def do_cont(message: CQMessage, prompt, from_state="new", recall=None):
+def do_cont(message: CQMessage, prompt, from_state="new", recall=None, temperature=1, top_p=0.3):
     global cont_args
     data = form_args(
         feed=prompt,
         stop_at_eot=True,
         recall=recall,
-        length=250
+        length=250,
+        temperature=temperature,
+        top_p=top_p
     )
     url = HOST+API_PATH+"/"+from_state
     r = requests.post(url, json=data)
@@ -124,7 +127,7 @@ The following is a coherent verbose detailed conversation between a Chinese girl
 chat_template_qq = lambda username, botname, sep: f"""一下是一段{username}和{botname}之间的对话。
 """
 
-def do_chat(message: CQMessage, prompt, from_state="new", username="Bob", botname="Alice", sep=":", template="original", n_lf=2):
+def do_chat(message: CQMessage, prompt, from_state="new", username="Bob", botname="Alice", sep=":", template="", n_lf=2, temperature=1, top_p=0.3):
     global chat_args, cont_args
     if(from_state=="new"):
         if(template == "original"):
@@ -142,7 +145,9 @@ def do_chat(message: CQMessage, prompt, from_state="new", username="Bob", botnam
         stop_before=[f"{username}{sep}"],
         stop_at_eot=True,
         adjust = {f"{username}{sep}":-0.3},
-        length=500
+        length=500,
+        temperature=temperature,
+        top_p=top_p
     )
     print(data["feed"])
     url = HOST+API_PATH+"/"+from_state
@@ -166,11 +171,14 @@ def do_chat(message: CQMessage, prompt, from_state="new", username="Bob", botnam
             from_state=data["state"],
             username=username,
             botname=botname,
-            sep=sep
+            sep=sep,
+            temperature=temperature,
+            top_p=top_p
         )
         
         cont_args[uid] = cont_args[message_id] = form_args(
-            from_state=data["state"]
+            from_state=data["state"],
+            temperature=temperature
         )
 
 def process_prompt(p: str) -> str:
@@ -212,7 +220,7 @@ def cmd_rwkv_cont(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/chat", {"-me", "-bot", "-reset", "-template"}, bool_opts={"-reset"})
+@command("[/!]chat", {"-me", "-bot", "-reset", "-template", "-temperature", "-top_p"}, bool_opts={"-reset"})
 def cmd_rwkv_chat(message: CQMessage, *args, **kwargs):
     prompt = process_prompt(" ".join(args))
     kwa = {}
@@ -232,5 +240,54 @@ def cmd_rwkv_chat(message: CQMessage, *args, **kwargs):
             kwa["botname"] = v
         elif(k=="template"):
             kwa["template"] = v
+        elif(k=="temperature"):
+            kwa["temperature"] = float(v)
+        elif(k=="top_p"):
+            kwa["top_p"] = float(v)
         
     do_chat(message, prompt, **kwa)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/qcont", opts={"-n"})
+def cmd_rwkv_gg(message: CQMessage, *args, **kwargs):
+    g = message.group
+    
+    com, buf = get_mes_record(g)
+    messages = com+buf
+    num = int(kwargs.get("n", 5))
+    _messages = []
+    for i in messages[::-1]:
+        i = CQMessage.from_cq(i)
+        text = i.plain_text
+        text = text.replace("[图片]", "")
+        text = text.strip()
+        if('com.tencent.miniapp' in text):
+            continue
+        if("的QQ暂不支持" in text):
+            continue
+        if("请使用最新版手机QQ" in text):
+            continue
+        if(not text):
+            continue
+        if(text[0] in "!/！"):
+            continue
+
+        _messages.append(i)
+        if(len(_messages)>num):
+            break
+    messages = _messages[::-1]
+    texts = []
+    for i in messages:
+        text = i.plain_text
+        text = text.replace("[图片]", "")
+        text = text.strip()
+        texts.append("%s: %s"%(i.sender.name, text))
+    if(args):
+        texts.append("%s: "%(" ".join(args)))
+    text = "\n".join(texts)
+    # if(args):
+    #     text = text+"\n"+" ".join(args)+": "
+    do_cont(message, text)

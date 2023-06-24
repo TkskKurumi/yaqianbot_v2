@@ -19,7 +19,10 @@ import base64
 from io import BytesIO
 import shutil
 from ..configure import bot_config
+from ...utils.timing import Limit
 GREYSCALE = False
+
+send_limit = Limit(20, 3)
 
 message_image = {}
 def mem_message_im(id, im):
@@ -362,6 +365,7 @@ class CQMessage(Message):
         im = any_image(message)
         prepare(message=prepare_message(message, force_png=force_png))
         # print(args)
+        send_limit()
         ret = cqhttp._bot.sync.send_msg(**args)
         if(im):
             id = ret.get("message_id")
@@ -380,6 +384,7 @@ class CQMessage(Message):
         im = any_image(message)
         prepare(message=prepare_message(message, force_png=force_png))
         # print(args)
+        send_limit()
         ret = await cqhttp._bot.send_msg(**args)
         if(im):
             id = ret.get("message_id")

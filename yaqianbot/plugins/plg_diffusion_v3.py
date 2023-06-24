@@ -1,4 +1,5 @@
 import random
+from ..utils.image.process import color_segmentation
 from ..backend.bot_date import now
 from ..utils.image.hytk import hytk
 import re
@@ -721,6 +722,7 @@ def do_img2img(message, orig_image, *args, **kwargs):
     params["guidance"] = g
     params["ddim_noise"] = ddim_noise
     params["loras"] = ",".join(kwargs.get("loras", []))
+    params["beta"] = float(kwargs.get("beta", 1))
     tickets = []
     num = int(kwargs.get("n", 1))
     thr = get_throttle(message)
@@ -827,7 +829,7 @@ def cmd_continue_img2img_v3(message: CQMessage, *args, **kwargs):
         orig_image = sent_image[message.sender.id]
     return do_img2img(message, orig_image, *args, **kwargs)
 
-img2img_opts = {"-loras", "-guidance", "-g", "-strength", "-s", "-noise", "-n", "-debug", "-roll", "-roll_from", "-hytk"}
+img2img_opts = {"-loras", "-guidance", "-g", "-strength", "-s", "-noise", "-n", "-debug", "-roll", "-roll_from", "-hytk", "-beta"}
 img2img_ls_ops = {"-loras", "-roll_from"}
 @receiver
 @threading_run
@@ -1696,6 +1698,65 @@ def cmd_process_v3(message: CQMessage, *args, **kwargs):
         
         _, img = message.get_sent_images()[0]
     return do_process(message, img.convert("RGB"), **kwargs)
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/md", opts={"-dry", "-k", "-a"}, bool_opts={"-dry"})
+def cmd_multi_diffusion(message: CQMessage, *args, dry=False, **kwargs):
+    
+    if(message.get_reply_image()):
+        img = message.get_reply_image()
+    else:
+        imgtype, img = message.get_sent_images()[0]
+
+    k = int(kwargs.get("k", 3))
+    arr = color_segmentation(img, temperature=5, k=k, seed=1, norm_area=False)
+    masks = []
+    for i in range(k):
+        segarr = arr[:, :, i]
+        mask = Image.fromarray((segarr*255).astype(np.uint8))
+        masks.append(mask)
+    
+    
+    try:
+        messages = [message.construct_forward(mask) for mask in masks]
+        message.send_forward_message(messages)
+    except Exception:
+        simple_send(masks)
+    if(dry):
+        return
+
+    prompts = {}
+    common_prompts = []
+    key = None
+    for i in args:
+        if(i.startswith("<") and i.endswith(">")):
+            key = i[1:-1]
+        else:
+            if(key is None):
+                common_prompts.append(i)
+            else:
+                ls = prompts.get(key) or list()
+                ls.append(i)
+                prompts[key] = ls
+
+    multi_prompts = []
+    s, o = get_user_entries(message.sender.id)
+    for k, v in prompts.items():
+        PP = PromptProcessor(" ".join(v), s+o)
+        multi_prompts.append(PP.raw)
+    
+    t = DiffuserFastAPITicket("multi_diffusion")
+    t.param(prompt=" ".join(common_prompts), multi_prompts=multi_prompts)
+    for idx, m in enumerate(masks):
+        t.upload_image(m, "mask_%d"%idx)
+
+    im = t.get_image()
+    simple_send(im)
+    
+
+
 
 @receiver
 @threading_run

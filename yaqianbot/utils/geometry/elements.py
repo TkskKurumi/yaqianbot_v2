@@ -45,7 +45,8 @@ class Point2d:
             return self.x*other.x+self.y*other.y
         else:
             return Point2d(self.x*other, self.y*other)
-
+    def __rmul__(self, other):
+        return self*other
     def dot(self, other):
         return self.x*other.x+self.y*other.y
 
@@ -93,7 +94,9 @@ class Point2d:
     @property
     def intxy(self):
         return int(self.x), int(self.y)
-
+    @property
+    def xy(self):
+        return self.x, self.y
 if(__name__ == "__main__"):
     A = Point2d(0, 2)
     B = Point2d(2, 0)

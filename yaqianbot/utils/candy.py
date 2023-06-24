@@ -123,6 +123,12 @@ class __FUNC__(object):
                 frame = frame.f_back
             return str(frame.f_code.co_name)
 
+def get_module(key):
+    for name, module in list(sys.modules.items()):
+        if(name.endswith(key)):
+            return module
+    return None
+
 
 def log_header():
     file = str(__FILE__(2))
