@@ -33,8 +33,8 @@ def on_exception_response(func):
             return ret
         except Exception as e:
             mes = "Error: %s"%e
-            if(len(mes)>256):
-                mes = mes[:256]+"..."
+            if(len(mes)>192):
+                mes = mes[:192]+"..."
             message.response_sync(mes)
             if("yaqianbot.plugins.plg_admin" in sys.modules):
                 plg_admin = sys.modules["yaqianbot.plugins.plg_admin"]

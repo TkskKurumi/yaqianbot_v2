@@ -11,6 +11,71 @@ class FakeLock:
         print(self, ".acquire")
     def release(self):
         print(self, ".release")
+
+def dump_obj(obj, visited=None, depth=3, root=True):
+    if (visited is None):
+        visited = set()
+    if (depth<=0):
+        return str(obj)
+    clsname = obj.__class__.__name__
+    buffer = []
+    def prt(*args, sep=" ", end="\n", **kwargs):
+        buffer.append("%s%s"%(sep.join(str(i) for i in args), end))
+    def indentd(st: str):
+        ret = []
+        spl = st.split("\n")
+        for idx, i in enumerate(spl):
+            if (idx==0 or idx==len(spl)-1):
+                ret.append(i)
+            else:
+                ret.append("    "+i)
+        return "\n".join(ret)
+
+    if (isinstance(obj, int)):
+        return "int(%s)"%obj
+    elif (isinstance(obj, str)):
+        return '"%s"'%obj
+    elif (isinstance(obj, float)):
+        return 'float(%s)'%obj
+    elif (obj is None):
+        return "None"
+    
+    if(id(obj) in visited):
+        return "<%s object %d>"%(clsname, id(obj))
+
+    visited.add(id(obj))
+
+    if (isinstance(obj, dict)):
+        prt("{")
+        for k, v in obj.items():
+            kstr = dump_obj(k, visited, depth-1, False)
+
+            vstr = indentd(dump_obj(v, visited, depth-1, False))
+
+            prt("%s: %s"%(kstr, vstr))
+        prt("}", end="")
+        return "".join(buffer)
+    elif (isinstance(obj, list)):
+        prt("[")
+        for i in obj:
+            istr = indentd(dump_obj(i, visited, depth-1, False))
+            prt("%s,"%istr)
+        prt("]", end="")
+        return "".join(buffer)
+
+    if (hasattr(obj, "__dict__")):
+        prt("%s("%clsname)
+        for k, v in obj.__dict__.items():
+            vstr = indentd(dump_obj(v, visited, depth-1, False))
+            prt("%s=%s,"%(k, vstr))
+        prt(")", end="")
+        if (root):
+            return indentd("".join(buffer))
+        else:
+            return "".join(buffer)
+    else:
+        return str(obj)
+
 def simple_send(messages, **kwargs):
     frame = inspect.currentframe().f_back
     mes = frame.f_locals.get("mes") 
