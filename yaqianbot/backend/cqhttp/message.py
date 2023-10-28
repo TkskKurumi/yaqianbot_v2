@@ -130,12 +130,12 @@ def prepare_message(mes, force_png = False):
             ret.append(MSEG.text(str(i)))
     return ret
 
-
+_re_cqcode = re.compile(r"(\[CQ:(.+?),(.+?)\])")
 def mes_str2arr(message):
     pattern = r"(\[CQ:(.+?),(.+?)\])"
 
-    all_cqcode = re.findall(pattern, message)
-    all_plain = re.split(pattern, message)[::4]
+    all_cqcode = _re_cqcode.findall(message)
+    all_plain = _re_cqcode.split(message)[::4]
     # print(log_header(), all_cqcode)
     # print(log_header(), all_plain)
     ret = []
@@ -274,7 +274,7 @@ class CQMessage(Message):
         return cls(raw = raw, self_id = self_id, sender = sender)
 
     @classmethod
-    def from_cq(cls, event):
+    def from_cq(cls, event, quick=False):
         try:
             sender = event.sender
         except AttributeError:
@@ -314,9 +314,9 @@ class CQMessage(Message):
         ret = cls(sender=sender, pics=pics, ated=ated,
                   plain_text=plain_text, group=group, raw=event, self_id=self_id)
         ret.update_rpics()
-        if(pics):
+        if((not quick) and pics):
             im = pics[0]
-            print("DEBUG: ", pics, im)
+            
             id = event.get("message_id")
             if(id):
                 mem_message_im(id, im)

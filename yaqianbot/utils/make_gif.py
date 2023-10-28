@@ -1,4 +1,6 @@
 from PIL import Image
+
+from yaqianbot.backend.cqhttp.message import GREYSCALE
 from . import myhash
 from typing import List
 from .image.sizefit import _wh_fit_area
@@ -26,6 +28,7 @@ def make_mp4(frames, fps=24):
     p = os.popen(scripts)
     log = p.read()
     return outpth
+GREYSCALE = False
 def make_gif(frames: List[Image.Image], fps=24, area=None, frame_area_sum=None):
     print("making gif")
     if(len(frames)==1):
@@ -44,6 +47,8 @@ def make_gif(frames: List[Image.Image], fps=24, area=None, frame_area_sum=None):
             im = i.resize((w, h), Image.BILINEAR)
         else:
             im = i
+        if(GREYSCALE):
+            im = im.convert("LA")
         resized.append(im)
         tmp = np.array(im.resize((4, 4)))
         # print(myhash.myhash(tmp))

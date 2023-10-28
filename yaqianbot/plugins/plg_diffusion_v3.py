@@ -3,6 +3,7 @@ from ..utils.image.process import color_segmentation
 from ..backend.bot_date import now
 from ..utils.image.hytk import hytk
 import re
+from . import plg_diffusion_v3_ld, plg_diffusion_v3_txt
 from threading import Lock
 from typing import Dict, List, Tuple, Union, Literal
 from PIL import Image, ImageFilter
@@ -678,7 +679,7 @@ def cmd_tag_alias_v3(message: CQMessage, *args, **kwargs):
         kwargs["topk"] = int(kwargs["k"])
     do_search_tag(message, search_key, **kwargs)
 
-def do_img2img(message, orig_image, *args, **kwargs):
+def do_img2img(message, orig_image, *args, quiet=False, **kwargs):
     uid = message.sender.id
     
     t = DiffuserFastAPITicket("img2img")
@@ -726,9 +727,6 @@ def do_img2img(message, orig_image, *args, **kwargs):
     tickets = []
     num = int(kwargs.get("n", 1))
     thr = get_throttle(message)
-    if(thr.wait_time()):
-        simple_send("过于频繁，请再过%.3f秒"%thr.wait_time())
-        return
     
 
     rolled = []
@@ -762,6 +760,8 @@ def do_img2img(message, orig_image, *args, **kwargs):
             mes = [PP_ill, "预计%.1f秒"%(eta*(num-idx))]
             simple_send(mes)
         img = t.get_image()
+        if (quiet):
+            return img
         if(kwargs.get("hytk")):
             simple_send(hytk(img, orig_image))
         img_prompt[img] = t["prompt"]
@@ -776,7 +776,7 @@ def do_img2img(message, orig_image, *args, **kwargs):
             simple_send(mes, force_png = True)
         else:
             simple_send(img, force_png = True)
-    
+    return img
 
 @receiver
 @threading_run
@@ -903,7 +903,27 @@ def gen_noise_image(w=512, h=512, arr=None, seed=None):
     arr = scale_min_max(arr, 0, 255).astype(np.uint8)
     img = Image.fromarray(arr)
     return img
-def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, **kwargs):
+
+
+def default_hash(*args, **kwargs):
+    return base32([args, kwargs])
+
+def cached_func(fhash=default_hash):
+    def wrapper(func):
+        storage = {}
+        @wraps(func)
+        def inner(*args, **kwargs):
+            key = fhash(*args, **kwargs)
+            if (key in storage):
+                return storage[key]
+            else:
+                ret = func(*args, **kwargs)
+                storage[key] = ret
+                return ret
+        return inner
+    return wrapper
+
+def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, quiet=False, **kwargs):
     prompt = " ".join(args)
     if(message.group in force_tag):
         prompt += ", "+force_tag[message.group]
@@ -940,7 +960,9 @@ def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, **kwargs):
     rolled = []
     if(kwargs.get("seed")):
         seed = kwargs["seed"]
-        if(seed.isnumeric()):
+        if (isinstance(seed, int)):
+            pass
+        elif(seed.isnumeric()):
             seed = int(seed)
         else:
             seed = hashi(seed, length=32)
@@ -959,22 +981,46 @@ def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, **kwargs):
             rolled.append(k)
         t.param(**params)
         if(seed is not None):
-            noise = gen_noise_image(1024, 1024)
+            noise = gen_noise_image(1536, 1536)
             t.upload_image(noise, "noise_image")
         tickets.append(t)
-    if(rolled):
-        im = PP.illust(roll="\n".join(rolled))
-    else:
-        im = PP.illust()
+    im = None
+    lazy_im_lck = Lock()
+    def lazy_im():
+        nonlocal rolled, PP, im, lazy_im_lck
+        if(im is not None):
+            return im
+        with lazy_im_lck:
+            if(rolled):
+                im = PP.illust(roll="\n".join(rolled))
+            else:
+                im = PP.illust()
+        return im
+    @threading_run
+    def lazy_hint(idx, n, eta):
+        nonlocal message
+        mes = [lazy_im(), "%d/%d预计剩余%.2f秒"%(idx, n, eta)]
+        simple_send(mes)
     for idx, t in enumerate(tickets):
         submit = t.submit()
         eta = submit["data"]["eta"]*(n-idx)
-        mes = [im, "%d/%d预计剩余%.2f秒"%(idx, n, eta)]
         if(verbose>=1):
-            simple_send(mes)
+            lazy_hint(idx, n, eta)
         im = t.get_image()
         img_prompt[im] = t["prompt"]
-    simple_send(im)
+        if (quiet):
+            return im
+        if (kwargs.get("label")):
+            simple_send([im, kwargs.get("label")])
+        else:
+            simple_send(im)
+
+def cachable_txt2img(message: CQMessage, *args, **kwargs):
+    if ("seed" in kwargs and "quiet" in kwargs):
+        return base32((args, kwargs), length=20)
+    else:
+        return random.random()
+cached_txt2img = cached_func(cachable_txt2img)(do_txt2img)
 
 def do_diff(message: CQMessage, p0, p1, *args, send=True):
     _p0, _p1 = p0, p1
@@ -1538,10 +1584,41 @@ def cmd_available_models(message: CQMessage, *args, **kwargs):
     )
     simple_send(mes)
 
+
+
 @receiver
 @threading_run
 @on_exception_response
-@command("[/~～]画图", opts={"-seed", '-guidance', "-g", "-aspect", "-a", "-n", "-roll", "-roll_from", "-exc", "-unets", "-vaes", "-loras"}, bool_opts={"-roll"}, ls_opts = {"-roll_from", "-exc", "-loras"})
+@command("/测lora", opts={"-loras", "-seed", "-aspect", "-a", "-alphas"}, ls_opts={'-loras', "-alphas"})
+def cmd_cmp_lora(message: CQMessage, *args, alphas=None, loras=None, seed=3389, **kwargs):
+    if (not loras):
+        simple_send("没指定lora")
+        return
+    if (alphas is None):
+        alphas = [0, 0.85]
+    
+    col = []
+    for lora in loras:
+        row = []
+        for alpha in alphas:
+            alpha = float(alpha)
+            proargs = list(args)
+            if (alpha!=0):
+                label = '<lora:%s:%.3f>'%(lora, alpha)
+                proargs.append(label)
+
+            im = cached_txt2img(message, *proargs, seed=seed, quiet=True, **kwargs)
+                
+            row.append(im)
+        col.append(Row(row))
+    simple_send(Column(col).render())
+
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("[/~～]画图", opts={"-seed", '-guidance', "-g", "-aspect", "-a", "-n", "-roll", "-roll_from", "-exc", "-unets", "-vaes", "-loras", "-label"}, bool_opts={"-roll"}, ls_opts = {"-roll_from", "-exc", "-loras"})
 def cmd_aidraw_v3(message: CQMessage, *args, **kwargs):
     return do_txt2img(message, *args, **kwargs)
     uid = message.sender.id
@@ -2017,8 +2094,222 @@ def cmd_outpaint_v3(message: CQMessage, *args, **kwargs):
     im = t.get_image()
     sent_image[message.sender.id] = im
     simple_send(im)
+
+
+def string2color(s):
+    if(isinstance(s, tuple)):
+        return s
+    if("," in s):
+        return tuple(int(i) for i in s.split(","))
+    else:
+        colors = (lambda **kwargs: kwargs)(
+            RED = (255, 0, 0),
+            BLUE = (0, 0, 255),
+            CYAN = (66, 160, 255),
+            MIKU = (140, 226, 220),
+            GREEN = (0, 255, 0),
+            LIGHT_GREEN = (128, 255, 128),
+            PURPLE = (216, 79, 255),
+            GOLDEN = (255, 195, 153)
+        )
+        if (s in colors):
+            return colors[s]
+        else:
+            raise ValueError(s)
+
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/qr画图", opts={"-content", "-beta0", "-beta1", "-beta", "-mode", "-size", "-xpos", "-ypos", "-a", "-black", "-white", "-debug", "-nopm"}, bool_opts={"-debug", "-nopm"})
+def cmd_img2img_byqr(message: CQMessage, *args, debug=False, beta=1, beta0=0.78, beta1=0.12, mode="qr", size=0.95, xpos=0.5, ypos=0.95, **kwargs):
+
+    beta = float(beta)
+    beta0 = beta*float(beta0)
+    beta1 = beta*float(beta1)
+    size = float(size)
+    xpos = float(xpos)
+    ypos = float(ypos)
     
+    aspect = get_config(message, "aspect", 9/16, kwargs.get("a"))
+    if(isinstance(aspect, str)):
+        if(":" in aspect):
+            a, b = aspect.split(":")
+            aspect = float(a)/float(b)
+        else:
+            aspect = float(aspect)
+    w, h = aspect, 1
+    ratio = (512*512*3.5/w/h)**0.5
+    w, h = int(w*ratio), int(h*ratio)
+
+    prompt = " ".join(args)
+    s, o=get_user_entries(message.sender.id)
+    PP = PromptProcessor(prompt, s+o)
+    prompt = PP.raw
+
+    def showmask(mask):
+        nonlocal message, debug
+        if (debug):
+            simple_send(mask)
+        return mask
+
+    bl, wh = string2color(kwargs.get("black", (0, 0, 0))), string2color(kwargs.get("white", (255, 255, 255)))
+
+    data = kwargs.get("content", "https://baidu.com")
+    img = plg_diffusion_v3_ld.do_qr_ld(prompt, data, preserve_mean=not kwargs.get("nopm", False), black=bl, white=wh, width=w, height=h, xpos=xpos, ypos=ypos, beta0=beta0, beta1=beta1, mode=mode, qrsize=size, post_process_mask = showmask, HOST=HOST)
+    img1 = img.copy()
+    simple_send(img)
+    plg_diffusion_v3_ld.show_palette(message, img1)
+
+@receiver
+@threading_run
+@on_exception_response
+@command("~以字画图", opts={"-text", "-t", "-beta", "-margin", "-bg", "-fill", "-auto_bg", "-fg_as_bg", "-auto_beta", '-s'}, ls_opts={"-beta"}, bool_opts={"-auto_bg", "-fg_as_bg", "-auto_beta"})
+def cmd_img2img_bytext(message: CQMessage, *args, fg_as_bg=False, auto_beta=False, s=0.95, **kwargs):
+    t = kwargs.get("t") or kwargs.get("text") or "草"
+
+    t = t.split("\\\\")
+    t = [i.replace("\\n", "\n") for i in t]
+    t = "\\".join(t)
+
+    bg = kwargs.get("bg", None)
+    if (bg is None):
+        bg = random.choice([(80, 25, 70), (25, 70, 80)])
+    if(isinstance(bg, str)):
+        bg = tuple(int(i) for i in bg.split(","))
     
+    fill = kwargs.get("fill", None)
+    if (fill is None):
+        if (sum(bg[:3])/3 > 128):
+            fill = random.choice([(80, 25, 70), (25, 70, 80)])
+        else:
+            fill = random.choice([(255, 222, 240), (233, 222, 255)])
+    if(isinstance(fill, str)):
+        fill = tuple(int(i) for i in fill.split(","))
+
+    s = float(s)
+    img = None
+    def update_img():
+        nonlocal img, fill, bg
+        RT = RichText(Keyword("texts"), width=512, fontSize=36, bg=bg, fill=fill, alignX=0.5, horizontalSpacing=0, dontSplit=False, autoSplit=False)
+        img = RT.render(texts=[t])
+        margin = float(kwargs.get("margin", 0))
+        if (margin):
+            w, h = img.size
+            m = margin*min(w, h)
+            w1, h1 = int(w+m), int(h+m)
+            img1 = Image.new(img.mode, (w1, h1), bg)
+            img1.paste(img, box=((w1-w)//2, (h1-h)//2))
+            img = img1
+    update_img()
+
+    betas = kwargs.get("beta", [0.7])
+    kwargs.pop("beta", None)
+
+    def get_fg_bg(img1):
+        nonlocal fill, bg, img
+        fill = fill[:3]
+        bg = bg[:3]
+        arr0 = np.array(img.convert("RGB")).astype(np.float32)
+        arr_fill = arr0-fill
+        arr_fill = np.sqrt((arr_fill**2).sum(axis=-1))
+        arr_bg = arr0-bg
+        arr_bg = np.sqrt((arr_bg**2).sum(axis=-1))
+        
+        mask_fill = arr_fill<arr_bg
+        mask_bg = arr_bg<arr_fill
+        h, w = mask_fill.shape
+        mask_fill = mask_fill.reshape((h, w, 1))
+        mask_bg = mask_bg.reshape((h, w, 1))
+
+        img1 = img1.resize(img.size, Image.Resampling.LANCZOS)
+        arr1 = np.array(img1).astype(np.float32)
+        
+        c_fill = (arr1*mask_fill).sum(axis=0).sum(axis=0)/np.sum(mask_fill)
+        c_bg = (arr1*mask_bg).sum(axis=0).sum(axis=0)/np.sum(mask_bg)
+        return c_fill, c_bg
+    auto_bg = kwargs.get("auto_bg")
+    if (auto_bg or fg_as_bg):
+        if(len(betas)<2):
+            betas = [0.999]+betas
+            
+
+    for beta in betas:
+        beta = float(beta)
+        if (auto_beta):
+            color_diff = np.array(fill[:3], np.float32) - np.array(bg[:3], np.float32)
+            color_diff = np.mean(np.abs(color_diff))/255
+            print(fill, bg, color_diff, 'cdiff')
+            beta *= color_diff**0.5
+        img1 = do_img2img(message, img, *args, beta=float(beta), quiet=True, s=s, **kwargs).convert("RGB")
+        c_fill, c_bg = get_fg_bg(img1)
+        mes = "fill=(%s), bg=(%s), beta=%.2f"%(
+                ", ".join("%d"%i for i in c_fill),
+                ", ".join("%d"%i for i in c_bg),
+                float(beta)
+            )
+        simple_send([img1, mes])
+        if (fg_as_bg):
+
+            if (sum(c_fill)/len(c_fill) > 128):
+                fill = (0, )*3
+            else:
+                fill = (255, )*3
+            bg = tuple(c_fill)
+            # simple_send("update bg=%s, fill=%s"%(bg, fill))
+            update_img()
+        elif (auto_bg):
+            if (sum(c_bg)<sum(c_fill)):
+                fill = (255,)*3
+            else:
+                fill = (0, )*3
+            bg = tuple(c_bg)
+            update_img()
+    # fill = fill[:3]
+    # bg = bg[:3]
+    # arr0 = np.array(img.convert("RGB")).astype(np.float32)
+    # arr_fill = arr0-fill
+    # arr_fill = np.sqrt((arr_fill**2).sum(axis=-1))
+    # arr_bg = arr0-bg
+    # arr_bg = np.sqrt((arr_bg**2).sum(axis=-1))
+    
+    # mask_fill = arr_fill<arr_bg
+    # mask_bg = arr_bg<arr_fill
+    # print("mask_fill.shape", mask_fill.shape)
+    # h, w = mask_fill.shape
+    # mask_fill = mask_fill.reshape((h, w, 1))
+    # mask_bg = mask_bg.reshape((h, w, 1))
+
+    # img1 = img1.resize(img.size, Image.Resampling.LANCZOS)
+    # arr1 = np.array(img1).astype(np.float32)
+    
+    # c_fill = (arr1*mask_fill).sum(axis=0).sum(axis=0)/np.sum(mask_fill)
+    # c_bg = (arr1*mask_bg).sum(axis=0).sum(axis=0)/np.sum(mask_bg)
+
+    # if (True):
+    #     diff = np.array(c_fill)-np.array(c_bg)
+    #     max_diff = np.max(np.abs(diff))
+    #     diff = diff/max_diff*250
+    #     c_bg = np.array((0, 0, 0), dtype=np.float32)
+    #     c_fill = c_bg + diff
+    #     mn = min(np.min(c_bg), np.min(c_fill))
+    #     if (mn<0):
+    #         c_bg -= mn
+    #         c_fill -= mn
+        
+
+    # s = "recommend fill=(%s), bg(%s)"%(
+    #     ", ".join("%d"%i for i in c_fill),
+    #     ", ".join("%d"%i for i in c_bg),
+    # )
+    # simple_send(s)
+
+
+
+    
+
+
 
 @receiver
 @threading_run
@@ -2066,3 +2357,178 @@ def cmd_inpaint_v3(message:CQMessage, *args, **kwargs):
     sent_image[message.sender.id] = im
     simple_send(im)
 
+def get_arg_color(key, default, kwargs):
+    return string2color(kwargs.get(key, default))
+@receiver
+@threading_run
+@on_exception_response
+@command("/以字画图", opts={"-beta", "-text", "-bg", "-fill", "-a", "-size", "-beta0", "-beta1"}, ls_opts={"-text"})
+def foo(message: CQMessage, *args, **kwargs):
+    prompt = " ".join(args)
+    s, o=get_user_entries(message.sender.id)
+    PP = PromptProcessor(prompt, s+o)
+
+    beta = float(kwargs.get("beta", 1))
+    beta0 = float(kwargs.get("beta0", 0.1)) * beta
+    beta1 = float(kwargs.get("beta1", 0.85)) * beta
+    size = float(kwargs.get("size", 0.85))
+
+    aspect = get_config(message, "aspect", 9/16, kwargs.get("a"))
+    if (isinstance(aspect, str)):
+        if (":" in aspect):
+            _ = [float(i) for i in aspect.split(":")]
+            aspect = _[0]/_[1]
+        else:
+            aspect = float(aspect)
+    w, h = aspect, 1
+    ratio = (512*512*3.5/w/h)**0.5
+    w, h = int(w*ratio), int(h*ratio)
+
+    fill = string2color(kwargs.get("fill", (0, 0, 0)))
+    bg   = string2color(kwargs.get("bg", tuple((0 if i>127 else 255) for i in fill)))
+
+
+    txt = " ".join(kwargs.get("text", ["原神\n启动"]))
+    txt = "\\".join(i.replace("\\n", "\n") for i in txt.split("\\\\"))
+
+    img = plg_diffusion_v3_txt.do_txt_ld(PP.raw, txt, size=size, width=w, height=h, bg=bg, fill=fill, beta0=beta0, beta1=beta1)
+    simple_send(img)
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/test2", opts={"-A", "-B", "-betaA", "-betaB", "-fillA", "-fillB"}, ls_opts={"-A", "-B"})
+def cmd_diffusion_test2(message: CQMessage, *args, **kwargs):
+    s, o=get_user_entries(message.sender.id)
+    foo = lambda x:PromptProcessor(x, s+o).raw
+    
+    APro = foo(" ".join(kwargs.get("A", [])+[", "]+list(args)))
+    BPro = foo(" ".join(kwargs.get("B", [])+[", "]+list(args)))
+
+    if(message.get_reply_image()):
+        orig_image = message.get_reply_image()
+    else:
+        imgtype, orig_image = message.get_sent_images()[0]
+    orig_image = orig_image.convert("RGB")
+
+    lim_area = 512*512*2.5
+    w, h = orig_image.size
+    if (w*h>lim_area):
+        ratio = (lim_area/w/h)**0.5
+        w, h = round(w*ratio), round(h*ratio)
+        orig_image = orig_image.resize((w, h), Image.Resampling.LANCZOS)
+    foo = plg_diffusion_v3_ld.get_upload_id
+    
+    prompts = [APro, BPro]
+    masks = []
+    arr = color_segmentation(orig_image.convert("RGB"), temperature=5, k=2, seed=1)
+    arrA = arr[:, :, 0]
+    for i in range(2):
+        segarr = arr[:, :, i]
+        mask = Image.fromarray((segarr*255).astype(np.uint8))
+        masks.append(mask)
+
+    betaA = float(kwargs.get("betaA", 0))
+    betaB = float(kwargs.get("betaB", 0))
+    
+    try:
+        messages = [message.construct_forward(mask) for mask in masks]
+        message.send_forward_message(messages)
+    except Exception:
+        simple_send(masks)
+
+    mask_ids = [foo(mask, HOST) for mask in masks]
+    make_d = lambda **kwargs: kwargs
+    layers = [make_d(prompt=p, beta_mask=mask_ids[idx]) for idx, p in enumerate(prompts)]
+    if (betaA):
+        if("fillA" in kwargs):
+            fillA = get_arg_color("fillA", (255, 255, 255), kwargs)
+            img = Image.new("RGB", (w, h), fillA)
+        else:
+            img = orig_image
+        mask = Image.fromarray((arr[:, :, 0]*255*betaA).astype(np.uint8))
+        layers.append(make_d(beta_mask=foo(mask, HOST), image=foo(img, HOST)))
+    if (betaB):
+        if("fillB" in kwargs):
+            fillB = get_arg_color("fillB", (255, 255, 255), kwargs)
+            img = Image.new("RGB", (w, h), fillB)
+        else:
+            img = orig_image
+        mask = Image.fromarray((arr[:, :, 1]*255*betaB).astype(np.uint8))
+        layers.append(make_d(beta_mask=foo(mask, HOST), image=foo(img, HOST)))
+
+
+
+    postj = make_d(
+        width = w,
+        height = h,
+        layers = layers
+    )
+
+    r = requests.post(HOST+"/layered_diffusion", json=postj)
+
+    j = r.json()
+    img = j["data"]["image"]
+
+    r = requests.get(HOST+"/images/"+img)
+    bio = BytesIO()
+    bio.write(r.content)
+    bio.seek(0)
+    im = Image.open(bio)
+    
+    simple_send(im)
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/testAB", opts={"-A", "-B", "-temp"}, ls_opts={"-A", "-B"})
+def cmd_diffusion_test(message: CQMessage, *args, **kwargs):
+    s, o=get_user_entries(message.sender.id)
+    foo = lambda x:PromptProcessor(x, s+o).raw
+    
+    APro = foo(" ".join(kwargs.get("A", [])+list(args)))
+    BPro = foo(" ".join(kwargs.get("B", [])+list(args)))
+    
+    temp = float(kwargs.get("temp", 1))
+
+    w, h = 768, 1024
+    arr = [[x for x in range(w)] for y in range(h)]
+    arr = np.array(arr, dtype=np.float32)
+    
+    arr = arr/arr.max()
+    arr = (arr-0.5)*temp+0.5
+    arr[arr<0] = 0
+    arr[arr>1] = 1
+
+    arr *= 255
+
+    mask0 = Image.fromarray((255-arr).astype(np.uint8))
+    mask1 = Image.fromarray(arr.astype(np.uint8))
+
+    mask0 = plg_diffusion_v3_ld.get_upload_id(mask0, HOST)
+    mask1 = plg_diffusion_v3_ld.get_upload_id(mask1, HOST)
+
+    make_d = (lambda **kwargs: kwargs)
+    postj = make_d(
+        width = w,
+        height = h,
+        layers = [
+            make_d(prompt=APro, beta_mask = mask0),
+            make_d(prompt=BPro, beta_mask = mask1)
+        ]
+    )
+
+
+    r = requests.post(HOST+"/layered_diffusion", json=postj)
+
+    j = r.json()
+    img = j["data"]["image"]
+
+    r = requests.get(HOST+"/images/"+img)
+    bio = BytesIO()
+    bio.write(r.content)
+    bio.seek(0)
+    im = Image.open(bio)
+    
+    simple_send(im)

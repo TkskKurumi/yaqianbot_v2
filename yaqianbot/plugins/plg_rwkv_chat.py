@@ -38,7 +38,13 @@ def do_chat(message, prompt, retry=1, uname="User", bname="菜菜"):
         f"{uname}：",
         f"{bname}:",
         f"{bname}：",
-        f"以下是"
+        f"以下是",
+        f"Bot:",
+        f"Bot：",
+        f"用户：",
+        f"Human:",
+        f"Assistant:",
+        f"\n\n"
     ]
 
     if(uid in clients):
@@ -58,6 +64,15 @@ def do_chat(message, prompt, retry=1, uname="User", bname="菜菜"):
         clients[uid] = cl
         simple_send([contents])
 
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/reset_rwkv_chat", opts={})
+def cmd_reset_rwkv_chat(message: CQMessage, *args, **kwargs):
+    uid = message.sender.id
+    clients.pop(uid, None)
+    simple_send("「菜菜现在不记得之前和%s的对话了…」"%(message.sender.name))
 
 @receiver
 @threading_run

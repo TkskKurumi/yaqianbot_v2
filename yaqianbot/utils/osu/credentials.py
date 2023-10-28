@@ -24,7 +24,10 @@ def get_token():
         data["client_id"] = client_id
         data["client_secret"] = client_secret
         r = requests.post(r'https://osu.ppy.sh/oauth/token', data=data)
-        j = r.json()
+        try:
+            j = r.json()
+        except Exception as e:
+            print(r.text)
 
         token = j["access_token"]
         expire_time = tm+j['expires_in']
