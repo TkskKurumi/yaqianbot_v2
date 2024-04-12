@@ -1,4 +1,5 @@
 import random
+from functools import partial
 from ..utils.image.process import color_segmentation
 from ..backend.bot_date import now
 from ..utils.image.hytk import hytk
@@ -33,6 +34,28 @@ from .plg_diffusion_prompt_processor import PromptProcessor as PPv2
 from ..utils.candy import locked
 import math
 import time
+
+class PolyScheduler:
+    def __init__(self, xys, interp=lambda x:x):
+        self.xys = sorted(xys)
+        self.interp = interp
+    def __call__(self, x):
+        x0, y0 = self.xys[0]
+        if (x<=x0):
+            return y0
+        xend, yend = self.xys[-1]
+        if (x>=xend):
+            return yend
+        for idx, i in enumerate(self.xys):
+            x0, y0 = i
+            x1, y1 = self.xys[idx+1]
+            if (x0<=x and x<=x1):
+                x2 = (x-x0)/(x1-x0)
+                ratio = self.interp(x2)
+                return y0*(1-ratio) + y1*ratio
+        assert False
+
+
 
 force_tag = TypedLevelDB.open(
     path.join(mainpth, "saves", "plg_diffusion_v3", "force_tag")
@@ -745,10 +768,15 @@ def do_img2img(message, orig_image, *args, quiet=False, **kwargs):
         tickets.append(t)
         new_pp = PromptProcessor(params["prompt"], s+o)
     rolled = "\n".join(["    "+i for i in rolled])
-    if(PP.raw):
-        PP_ill = PP.illust(orig_image = orig_image, roll = rolled)
-    else:
-        PP_ill = new_pp.illust(orig_image = orig_image, roll = rolled)
+    @threading_run
+    def send_pp(eta):
+        nonlocal PP, message
+        if(PP.raw):
+            PP_ill = PP.illust(orig_image = orig_image, roll = rolled)
+        else:
+            PP_ill = new_pp.illust(orig_image = orig_image, roll = rolled)
+        mes = [PP_ill,  "预计%.1f秒"%eta]
+        simple_send(mes)
     for idx, t in enumerate(tickets):
         submit = t.submit()
         eta = submit["data"]["eta"]
@@ -757,8 +785,8 @@ def do_img2img(message, orig_image, *args, quiet=False, **kwargs):
         
         
         if(not idx):
-            mes = [PP_ill, "预计%.1f秒"%(eta*(num-idx))]
-            simple_send(mes)
+            if (not quiet):
+                send_pp(eta*(num-idx))
         img = t.get_image()
         if (quiet):
             return img
@@ -984,18 +1012,18 @@ def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, quiet=False, **
             noise = gen_noise_image(1536, 1536)
             t.upload_image(noise, "noise_image")
         tickets.append(t)
-    im = None
+    hint_im = None
     lazy_im_lck = Lock()
     def lazy_im():
-        nonlocal rolled, PP, im, lazy_im_lck
-        if(im is not None):
-            return im
+        nonlocal rolled, PP, hint_im, lazy_im_lck
+        if(hint_im is not None):
+            return hint_im
         with lazy_im_lck:
             if(rolled):
-                im = PP.illust(roll="\n".join(rolled))
+                hint_im = PP.illust(roll="\n".join(rolled))
             else:
-                im = PP.illust()
-        return im
+                hint_im = PP.illust()
+        return hint_im
     @threading_run
     def lazy_hint(idx, n, eta):
         nonlocal message
@@ -1004,7 +1032,7 @@ def do_txt2img(message: CQMessage, *args, verbose=1, roll=False, quiet=False, **
     for idx, t in enumerate(tickets):
         submit = t.submit()
         eta = submit["data"]["eta"]*(n-idx)
-        if(verbose>=1):
+        if(verbose>=1 and not quiet):
             lazy_hint(idx, n, eta)
         im = t.get_image()
         img_prompt[im] = t["prompt"]
@@ -1772,7 +1800,6 @@ def cmd_process_v3(message: CQMessage, *args, **kwargs):
     if(message.get_reply_image()):
         img = message.get_reply_image()
     else:
-        
         _, img = message.get_sent_images()[0]
     return do_process(message, img.convert("RGB"), **kwargs)
 
@@ -2059,40 +2086,37 @@ def cmd_outpaint_v3(message: CQMessage, *args, **kwargs):
         imgtype, image = message.get_sent_images()[0]
     w, h = image.size
     ratio = max(1,float(kwargs.get("r", 1.2)))
-    alignx, aligny = 0.5, 0.5
     w1, h1 = int(w*ratio), int(h*ratio)
-    left, top = int((w1-w)*alignx), int((h1-h)*aligny)
-    def new(w=w1, h=h1, mode="L", c=0):
-        if(mode=="RGB" and isinstance(c, int)):
-            c = (c,)*3
-        return Image.new(mode, (w, h), c)
-    base = image.resize((w1, h1), Image.LANCZOS)
-    basep = base.copy()
-    maskInner = new(c=0)
-    maskInner.paste(new(w=w, h=h, c=255), box=(left, top))
-    maskOuter = new(c=255)
-    maskOuter.paste(new(w=w, h=h, c=0), box=(left, top))
+    bx, by = (w1-w)/2, (h1-h)/2
 
-    basep.paste(image, box=(left, top))
 
-    maskInner = im_blur(maskInner, 5)
-    maskOuter = im_blur(maskOuter, 5)
-    base.paste(basep, mask=maskInner)
+    upsize = image.resize((w1, h1), Image.Resampling.LANCZOS)
+    mask = np.ones((h, w), np.float16)*255
+    for y in range(h):
+        y1 = min(y, h-y-1)/by
+        if (y1<=1):
+            iterx = range(w)
+        else:
+            iterx = list(range(round(bx))) + list(range(round(w-bx), w))
+        for x in iterx:
+            x1 = min(x, w-x-1)/bx
+            y1 = min(y, h-y-1)/by
+            if(x1>1 and y1>1):continue
+            n = min(x1*255, y1*255)
+            mask[y, x] = n
+    mask = Image.fromarray((mask*0.99).astype(np.uint8))
+    # simple_send(mask)
+
+    foo = partial(plg_diffusion_v3_ld.get_upload_id, HOST=HOST)
 
     s, o=get_user_entries(message.sender.id)
     PP = PromptProcessor(" ".join(args), s+o)
-    
-    t = DiffuserFastAPITicket("inpaint")
-    t.param(prompt=PP.raw, mode=1)
-    t.upload_image(base)
-    t.upload_image(maskOuter, "mask_image")
-    sub = t.submit()
-    eta = sub["data"]["eta"]
-
-    mes = [PP.illust(orig=base, newim=maskOuter), "预计%.1f秒"%eta]
-    simple_send(mes)
-    im = t.get_image()
-    sent_image[message.sender.id] = im
+    Layer = lambda **kwargs: kwargs
+    layer0 = Layer(prompt=PP.raw)
+    layer1 = Layer(image=foo(upsize), beta=0.3)
+    layer2 = Layer(image=foo(image), beta_mask=foo(mask))
+    layers = [layer0, layer1, layer2]
+    im = plg_diffusion_v3_ld.do(w1, h1, layers)
     simple_send(im)
 
 
@@ -2110,7 +2134,8 @@ def string2color(s):
             GREEN = (0, 255, 0),
             LIGHT_GREEN = (128, 255, 128),
             PURPLE = (216, 79, 255),
-            GOLDEN = (255, 195, 153)
+            GOLDEN = (255, 195, 153),
+            WHITE = (255, 255, 255)
         )
         if (s in colors):
             return colors[s]
@@ -2479,10 +2504,12 @@ def cmd_diffusion_test2(message: CQMessage, *args, **kwargs):
     simple_send(im)
 
 
+    
+
 @receiver
 @threading_run
 @on_exception_response
-@command("/testAB", opts={"-A", "-B", "-temp"}, ls_opts={"-A", "-B"})
+@command("/testAB", opts={"-A", "-B", "-temp", "-temp2", "-a"}, ls_opts={"-A", "-B"})
 def cmd_diffusion_test(message: CQMessage, *args, **kwargs):
     s, o=get_user_entries(message.sender.id)
     foo = lambda x:PromptProcessor(x, s+o).raw
@@ -2491,13 +2518,20 @@ def cmd_diffusion_test(message: CQMessage, *args, **kwargs):
     BPro = foo(" ".join(kwargs.get("B", [])+list(args)))
     
     temp = float(kwargs.get("temp", 1))
+    temp2 = float(kwargs.get("temp2", 1))
 
-    w, h = 768, 1024
+    a = float(kwargs.get("a", 0.8))
+    w, h = a, 1
+    r = (1024*768/w/h)**0.5
+    w, h = round(w*r/64)*64, round(h*r/64)*64
     arr = [[x for x in range(w)] for y in range(h)]
     arr = np.array(arr, dtype=np.float32)
     
     arr = arr/arr.max()
     arr = (arr-0.5)*temp+0.5
+    arr[arr<0] = 0
+    arr[arr>1] = 1
+    arr = (arr-0.5)*temp2+0.5
     arr[arr<0] = 0
     arr[arr>1] = 1
 

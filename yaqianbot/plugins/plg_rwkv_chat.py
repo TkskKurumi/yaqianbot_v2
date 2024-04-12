@@ -43,6 +43,7 @@ def do_chat(message, prompt, retry=1, uname="User", bname="菜菜"):
         f"Bot：",
         f"用户：",
         f"Human:",
+        f"Human：",
         f"Assistant:",
         f"\n\n"
     ]

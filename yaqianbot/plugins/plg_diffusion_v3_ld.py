@@ -7,12 +7,15 @@ from PIL import Image, ImageFilter
 import numpy as np
 from io import BytesIO  
 from ..utils.image.colors import image_colors
+from ..utils.myhash import myhash
 if("DIFFUSION_HOST_V3" in bot_config):
     HOST = bot_config.get("DIFFUSION_HOST_V3").strip("[/~～]")
 else:
     HOST = "http://localhost:8002"
 def img2bio(img):
     bio = BytesIO()
+    if (img.mode=="P"):
+        img = img.convert("RGBA")
     if("A" not in img.mode):
         img.save(bio, "JPEG")
     else:
@@ -137,11 +140,48 @@ def make_qr_with_mask(data, box_size=10, border=1, fdist=lambda x:1-x, l1=False)
     mask = make_qr_mask(width, height, w, h, border, fdist)
     return qr, mask
 
+def do(width, height, layers, **kwargs):
+    def up_dict(d):
+        for k, v in d.items():
+            if (isinstance(v, Image.Image)):
+                d[k] = get_upload_id(v, HOST)
+        return d
+    for idx, i in enumerate(layers):
+        layers[idx] = up_dict(i)
+    
+    make_dict = lambda **kwargs: kwargs
+    postj = make_dict(
+        width  = width,
+        height = height,
+        layers = layers,
+        **kwargs
+    )
+    postj = up_dict(postj)
+
+    r = requests.post(HOST+"/layered_diffusion", json=postj)
+
+    j = r.json()
+    img = j["data"]["image"]
+
+    r = requests.get(HOST+"/images/"+img)
+    bio = BytesIO()
+    bio.write(r.content)
+    bio.seek(0)
+    im = Image.open(bio)
+    return im
+
+
+upload_cache = {}
 def get_upload_id(image, HOST):
+    key = (myhash(image), HOST)
+    if (key in upload_cache):
+        return upload_cache[key]
     bio = img2bio(image)
     url = HOST+"/upload_image"
     r = requests.post(url, files={"data": bio})
-    return r.json()["data"]["img_id"]
+    ret = r.json()["data"]["img_id"]
+    upload_cache[key] = ret
+    return ret
 
 def recolor(qr, black, white):
     arr = np.array(qr.convert("L")).astype(np.float32)/255

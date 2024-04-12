@@ -1,7 +1,7 @@
 import numpy as np
 from PIL import Image
 def imghash(img, length=10):
-    im = img.convert("RGB").resize((10, 10))
+    im = img.convert("RGB").resize((16, 16))
     return myhash(np.array(im), length=length)
 def myhash(x, length = 50):
     mask = (1<<length)-1

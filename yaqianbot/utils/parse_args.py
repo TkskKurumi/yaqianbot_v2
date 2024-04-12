@@ -33,12 +33,15 @@ def split(str):
     return ret
 
 
-def parse_args(str, options, bool_opts = None, ls_opts = None):
+def parse_args(st, options, bool_opts = None, ls_opts = None):
     if(bool_opts is None):
         bool_opts = set()
     if(ls_opts is None):
         ls_opts = set()
-    splited = split(str)
+    if (isinstance(st, str)):
+        splited = split(st)
+    else:
+        splited = st
     args = []
     kwargs = dict()
     kw = None

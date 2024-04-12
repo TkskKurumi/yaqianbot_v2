@@ -1,5 +1,5 @@
 from PIL import Image
-
+import time
 from yaqianbot.backend.cqhttp.message import GREYSCALE
 from . import myhash
 from typing import List
@@ -28,6 +28,39 @@ def make_mp4(frames, fps=24):
     p = os.popen(scripts)
     log = p.read()
     return outpth
+
+
+def make_gif_size(frames: List[Image.Image], fps=24, filesize_lim=1<<20):
+    ratio = 1.0
+    width, height = frames[0].size
+    def resize(im: Image.Image):
+        nonlocal width, height, ratio
+        w, h = round(width*ratio), round(height*ratio)
+        return im.resize((w, h), Image.Resampling.LANCZOS)
+    def thumbnail(im):
+        return im.resize((8, 8))
+    thumbnailed = [thumbnail(i) for i in frames]
+    hashname = myhash.base32([thumbnailed, int(time.time())])
+    pth = path.join(gettempdir(), "make_gif", hashname)
+    os.makedirs(pth)
+    gifpth = path.join(pth, "out.gif")
+    while (True):
+        resized = [resize(i) for i in frames]
+        for idx, i in enumerate(resized):
+            i.save(path.join(pth, "%04d.png"%idx))
+        script = ["gifski", path.join(pth, "*.png"), "--fps", "%d"%fps, "-o", gifpth]
+        pipe = os.popen(" ".join(script))
+        result = pipe.read()
+        pipe.close()
+        result_size = path.getsize(gifpth)
+        print("GIF Size", result_size/1024/1024, "MB, %dx%d %d frames"%(width*ratio, height*ratio, len(frames)))
+        if (result_size < filesize_lim):
+            return gifpth
+        else:
+            ratio *= min(0.95, (filesize_lim/result_size)**0.5)
+    
+
+        
 GREYSCALE = False
 def make_gif(frames: List[Image.Image], fps=24, area=None, frame_area_sum=None):
     print("making gif")

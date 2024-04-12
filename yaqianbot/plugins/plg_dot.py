@@ -28,7 +28,5 @@ def cmd_dot(message, *args, **kwargs):
         f.write(content)
     
     cmd = ["dot", "-Tpng", '-o', pngpth, dotpth]
-    # cmd = ["rsvg-convert",'-b',"white", '-f', "png", "-o", pngpth, svgpth]
-    print(' '.join(cmd))
     os.system(" ".join(cmd))
     simple_send(pngpth)
