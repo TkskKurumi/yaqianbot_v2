@@ -118,7 +118,38 @@ def color_segmentation(im: Image.Image, k=3, seed=None, temperature=1, norm_area
 
     return ret
 
+def color_replace(img, from_to, target_w=0.99, q=1):
 
+    q = q/7
+
+    if (isinstance(img, Image.Image)):
+        arr = np.array(img.convert("RGBA"))
+    elif (isinstance(img, np.ndarray)):
+        arr = img
+    else:
+        raise TypeError(type(img))
+    
+    arr = arr.astype(np.float32)
+
+    n_color = len(from_to)
+
+    h, w, _ = arr.shape
+    color_froms = [fr for fr, to in from_to]
+    color_tos = [to for fr, to in from_to]
+    
+    
+    ret = arr*(1-target_w)
+    weight_sum = np.ones((h, w, 1), np.float32)*(1-target_w)
+    for i in range(n_color):
+        diff = arr - color_froms[i]
+        diff = np.sqrt((diff**2).sum(axis=2, keepdims=True))
+        weight = np.exp(-diff*q)*target_w
+        ret += weight*color_tos[i]
+        weight_sum += weight
+
+    ret = ret/weight_sum
+
+    return Image.fromarray(ret.astype(np.uint8))
 
     
 

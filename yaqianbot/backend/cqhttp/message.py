@@ -323,16 +323,17 @@ class CQMessage(Message):
         ret.api = CQApi(self_id = event.self_id)
         ret.reply_mes_id = reply_mes_id
         return ret
-    def get_reply_image(self):
+    def get_reply_image(self, include_typ=True):
         if(not self.reply_mes_id):
-            print("DEBUG: no reply id", self.reply_mes_id)
             return None
         im = message_image.get(str(self.reply_mes_id))
         if(isinstance(im, dict)):
             url = im["data"]["url"]
-            im = requests.get_image(url)[-1]
-        print("DEBUG: reply im", [self.reply_mes_id, im, list(message_image)])
-        return im
+            typ, im = requests.get_image(url)[-1]
+        if (include_typ):
+            return typ, im
+        else:
+            return im
     def get_sent_images(self, rettype="image", **kwargs):
         rpics = self.recent_pics
         ret = []
@@ -364,7 +365,7 @@ class CQMessage(Message):
                 args["message_type"] = "group"
         im = any_image(message)
         prepare(message=prepare_message(message, force_png=force_png))
-        # print(args)
+        # print("to send", args)
         send_limit()
         ret = cqhttp._bot.sync.send_msg(**args)
         if(im):
@@ -383,7 +384,7 @@ class CQMessage(Message):
                 args[key] = self.raw[key]
         im = any_image(message)
         prepare(message=prepare_message(message, force_png=force_png))
-        # print(args)
+        # print("to send", args)
         send_limit()
         ret = await cqhttp._bot.send_msg(**args)
         if(im):

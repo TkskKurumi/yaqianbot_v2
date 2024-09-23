@@ -1646,7 +1646,7 @@ def cmd_cmp_lora(message: CQMessage, *args, alphas=None, loras=None, seed=3389, 
 @receiver
 @threading_run
 @on_exception_response
-@command("[/~～]画图", opts={"-seed", '-guidance', "-g", "-aspect", "-a", "-n", "-roll", "-roll_from", "-exc", "-unets", "-vaes", "-loras", "-label"}, bool_opts={"-roll"}, ls_opts = {"-roll_from", "-exc", "-loras"})
+@command("[/~～]画图[ $]", opts={"-seed", '-guidance', "-g", "-aspect", "-a", "-n", "-roll", "-roll_from", "-exc", "-unets", "-vaes", "-loras", "-label"}, bool_opts={"-roll"}, ls_opts = {"-roll_from", "-exc", "-loras"})
 def cmd_aidraw_v3(message: CQMessage, *args, **kwargs):
     return do_txt2img(message, *args, **kwargs)
     uid = message.sender.id

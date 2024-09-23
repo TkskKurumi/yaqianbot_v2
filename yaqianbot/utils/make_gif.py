@@ -57,7 +57,7 @@ def make_gif_size(frames: List[Image.Image], fps=24, filesize_lim=1<<20):
         if (result_size < filesize_lim):
             return gifpth
         else:
-            ratio *= min(0.95, (filesize_lim/result_size)**0.5)
+            ratio *= min(0.97, (filesize_lim/result_size)**0.5)**1.1
     
 
         

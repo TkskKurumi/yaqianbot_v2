@@ -10,6 +10,9 @@ from ..utils.make_gif import make_gif, make_gif_size
 from ..utils.candy import simple_send
 
 
+def nparray2color(arr):
+    return tuple(int(i) for i in arr)
+
 class Node:
     def __init__(self, up, lo, le, ri, pic):
         self.up = up
@@ -18,7 +21,7 @@ class Node:
         self.ri = ri
         self.pic = pic
         self.child = [[None, None], [None, None]]
-        # print("DEBUG:", "created", self)
+        self.fa = None
     def add_leaf_to(self, ls):
         is_leaf = True
         for i in self.child:
@@ -28,7 +31,10 @@ class Node:
                     j.add_leaf_to(ls)
         if (is_leaf and (self.width==self.height)):
             ls.append(self)
+    def get_color_arr(self):
+        return self.pic.get_avg(self.up, self.lo, self.le, self.ri)
     def get_color(self):
+        return nparray2color(self.get_color_arr())
         return tuple([int(i) for i in self.pic.get_avg(self.up, self.lo, self.le, self.ri)])
     def __repr__(self):
         c = self.get_color()
@@ -49,6 +55,9 @@ class Node:
     @property
     def height(self):
         return self.lo-self.up
+    @property
+    def is_square(self):
+        return self.width == self.height
     @property
     def spl(self):
         width = self.width
@@ -71,7 +80,9 @@ class Node:
             heigth1 = lo1-up1
             width1 = ri1-le1
             if (heigth1>0 and width1>0):
-                return Node(up1, lo1, le1, ri1, self.pic)
+                ret = Node(up1, lo1, le1, ri1, self.pic)
+                ret.fa = self
+                return ret
             return None
         spl = self.spl
         if (spl==0):
@@ -124,7 +135,19 @@ def split(up, lo, le, ri):
         return spl//2
     return spl
 
+class AnimDot:
+    def __init__(self, pos0, pos1, col0, col1):
+        self.pos  = np.array(pos0, dtype=np.float32)
+        self.pos1 = np.array(pos1, dtype=np.float32)
+        self.col  = np.array(col0, dtype=np.float32)
+        self.col1 = np.array(col1, dtype=np.float32)
+        
+    def step(self, dt, alpha=0.1):
+        a = alpha**dt
+        self.pos = self.pos*a + self.pos1*(1-a)
+        self.col = self.col*a + self.col1*(1-a)
 
+        
     
 
 
@@ -181,7 +204,76 @@ class DotPic:
 @receiver
 @threading_run
 @on_exception_response
-@command("/dotpic", opts={})
+@command("/adotpic", opts={})
+def cmd_adotpic(message: CQMessage, *args, **kwargs):
+    if(message.get_reply_image()):
+        img = message.get_reply_image()
+    else:
+        _, img = message.get_sent_images()[0]
+    
+    w, h = img.size
+    w = w - (w%32)
+    h = h - (h%32)
+    img = img.resize((w, h))
+    dotpic = DotPic(img)
+    
+    dots = dict()
+    frames = []
+
+    def get_node_circle(u: Node):
+        if(u.ax in dots):
+            return dots[u.ax]
+        if ((u.fa is not None) and (u.fa.is_square)):
+            fa = get_node_circle(u.fa)
+            c = AnimDot(fa.pos, u.ax, fa.col, u.get_color_arr())
+            dots[u.ax] = c
+            return c
+        c = AnimDot(u.ax, u.ax, u.get_color_arr(), u.get_color_arr())
+        dots[u.ax] = c
+        return c
+
+    nseconds = 7
+    fps = 10
+    nframes = nseconds*fps
+    
+    dt = 1/fps
+    stop_build = False
+
+    alpha = 30000
+    foo = lambda i: alpha**((i+1)/nframes)
+
+    debug_frame_nleaf = []
+    for i in range(nframes):
+        if (not stop_build):
+            nbuild = int(foo(i))-int(foo(i-1))
+            for j in range(nbuild):
+                x, y = random.randrange(dotpic.w), random.randrange(dotpic.h)
+                dotpic.root.build_child_by_xy(x, y, 1)
+        
+        frame = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+        dr = ImageDraw.Draw(frame)
+
+        leafs = dotpic.get_leaf()
+        for node in leafs:
+            dot = get_node_circle(node)
+            dot.step(dt, alpha=0.001)
+            up, lo, le, ri = dot.pos
+            col = nparray2color(dot.col)
+            dr.ellipse((le, up, ri, lo), fill=col)
+        frames.append(frame)
+        debug_frame_nleaf.append(len(leafs))
+        if (len(leafs)>20000):
+            stop_build = True
+    # simple_send("DEBUG: nleaf = %s"%(debug_frame_nleaf))
+    simple_send(make_gif_size(frames, fps=fps))
+
+
+
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/dotpic", opts={"-static", "-at"}, bool_opts={"-static"})
 def cmd_dotpic(message: CQMessage, *args, **kwargs):
     if(message.get_reply_image()):
         img = message.get_reply_image()
@@ -208,7 +300,15 @@ def cmd_dotpic(message: CQMessage, *args, **kwargs):
         frames.append(pic)
         if (n_leaf>npix):
             break
-    fps = 8
+    fps = 6
+
+    nframes = len(frames)
+    if (kwargs.get("static")):
+        simple_send([frames[int(nframes*0.7)], frames[-1]])
+    if (kwargs.get("at")):
+        f = float(kwargs["at"])
+        simple_send(frames[int(nframes*f)])
+
     frames.extend(frames[-1:] * round(fps*0.5))
     gif = make_gif_size(frames, fps=fps)
     simple_send(gif)

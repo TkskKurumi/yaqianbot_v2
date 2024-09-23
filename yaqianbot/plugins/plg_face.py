@@ -5,6 +5,7 @@ from ..backend import receiver, startswith
 from ..backend import threading_run
 from ..backend.cqhttp import CQMessage
 from ..utils import np_misc
+from ..utils.algorithms import kmeans
 import re
 import random
 from datetime import timedelta
@@ -12,13 +13,14 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFilter
 from ..utils import image, algorithms
 from ..utils.image.sizefit import fit_shrink, fix_width
+from ..utils.image import process
 from math import pi as PI
 from ..utils.image import sizefit, colors
 from ..utils.image import gif_frames_duration, background
-from pil_functional_layout.widgets import Column, RichText, Text
+from pil_functional_layout.widgets import Column, RichText, Text, Row
 
 from pil_functional_layout.widgets import RichText
-from ..utils.make_gif import make_gif
+from ..utils.make_gif import make_gif, make_gif_size
 from ..utils import after_match
 from ..utils.algorithms.kdt import kdt as KDT
 from ..utils.algorithms.kdt import point as KDTPoint
@@ -51,6 +53,97 @@ def pic_ywyz(img):
                   "吗？"], fontSize=fontSize, width=500, autoSplit=False, dont_split=True)
     ret = Column([img, rt], bg=(255,)*3).render()
     return ret
+
+user_color26 = {}
+user_color1000 = {}
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/颜色替换", opts={"-gamma", "-gamma_r", "-gamma_g", "-gamma_b", "-strength", "-q"})
+def cmd_color_replace(message: CQMessage, *args, strength=0.9, q=1, **kwargs):
+    imgtype, img = message.get_sent_images()[0]
+    colors = []
+    c26 = user_color26[message.sender]
+    for i in args:
+        fr, to = None, None
+        for idx, j in enumerate(i):
+            c = c26[j.upper()]
+            if (idx==0):
+                fr = c
+            else:
+                to = c
+        if (to is None):
+            R, G, B, A = [float(i) for i in fr]
+            gamma = float(kwargs.get("gamma", 0.7))
+            gamma_r = float(kwargs.get("gamma_r", gamma))
+            gamma_g = float(kwargs.get("gamma_g", gamma))
+            gamma_b = float(kwargs.get("gamma_b", gamma))
+            R = ((R/255) ** gamma_r)*255
+            G = ((G/255) ** gamma_g)*255
+            B = ((B/255) ** gamma_b)*255
+            to = (R, G, B, A)
+
+
+        colors.append((fr, to))
+    img = process.color_replace(img, colors, target_w=float(strength), q=float(q))
+    simple_send(img)
+        
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/调色板", opts={"-add", "-reset", "-this"}, bool_opts={"-add", "-reset", "-this"})
+def cmd_palette(message: CQMessage, *args, add=False, reset=False, this=False, **kwargs):
+    if (reset):
+        user_color1000[message.sender] = []
+    if (add or reset):
+        c1000 = user_color1000.get(message.sender, [])
+        imgtype, img = message.get_sent_images()[0]
+        img = img.convert("RGBA")
+        w, h = img.size
+        for i in range(26*4):
+            x, y = random.randrange(w), random.randrange(h)
+            c1000.append(img.getpixel((x, y)))
+        c26 = kmeans(c1000, 26, iter=3)
+        c26 = [tuple(i) for i in c26]
+        def sort_key(c):
+            c = Color(*c)
+            h, s, l = c.get_hsl()
+            return (int(l*7), h)
+        c26 = sorted(c26, key = sort_key)
+        
+        user_color26[message.sender] = {}
+        for idx, c in enumerate(c26):
+            txt = chr(ord('A') + idx)
+            user_color26[message.sender][txt] = c
+        if (len(c1000) > 1000):
+            c1000 = kmeans(c1000, 1000, iter=2)
+        user_color1000[message.sender] = c1000
+    # if (this):
+    #     colors = []
+    #     for i in range(26*4):
+    #         x, y = random.randrange(w), random.randrange(h)
+    #         colors.append(img.getpixel((x, y)))
+    #     colors = kmeans(colors, 26, iter=3)
+    #     col = []
+
+    if (message.sender not in user_color26):
+        simple_send("empty")
+    c26 = user_color26[message.sender]
+    col = []
+    for txt, c in c26.items():
+        c = Color(*c)
+        if (c.get_hsl()[-1] > 0.5):
+            fill = (0, 0, 0)
+        else:
+            fill = (255, 255, 255)
+        back = c.aspil()
+        t = "%s: %s"%(txt, c.aspil())
+        col.append(Text(t, fill=fill, bg=back))
+    simple_send(Column(col).render())
+        
+        
 
 
 @receiver
@@ -153,51 +246,23 @@ def cmd_face_kanbian(message: CQMessage):
 
 @receiver
 @threading_run
-@startswith("(/8bit)|(/像素风)")
-def cmd_face_8bit(message: CQMessage):
-    text = after_match("(/8bit)|(/像素风)", message.plain_text).strip()
-    if(text.isdigit()):
-        n = min(max(int(text), 8), 256)
-    else:
-        n = 32
-
+@on_exception_response
+@command("/像素画", {"-a", "-c", "-method"})
+# @startswith("(/8bit)|(/像素风)")
+def cmd_face_8bit(message: CQMessage, *args, **kwargs):
     imgtype, img = message.get_sent_images()[0]
-    if(imgtype == "image/gif"):
-        frms, fps = image.gif_frames_fps(img)
-        w, h = frms[0].size
-        cols = []
-        for i in range(200):
-            x, y = random.randrange(w), random.randrange(h)
-            c = random.choice(frms).getpixel((x, y))
-            cols.append(c)
-        color16 = np.array(algorithms.kmeans(cols, n))
+    img = img.convert("RGB")
+    from ..utils.image.pixart import pix, color_palette, normalize_resolution
+    area = int(kwargs.get("a", 48*64))
+    ncolor = int(kwargs.get("c", 16))
+    area = int(min(img.width*img.height/9, area))
+    method = kwargs.get("method", "default")
+    if (method=="default"):
+        ret = color_palette(pix(img, area=area), n=ncolor)
     else:
-        color16 = None
-
-    def f(img):
-        nonlocal n, color16
-        w, h = img.size
-        if(w*h > 1e6):
-            img = sizefit.area(img, 1e6)
-            w, h = img.size
-        w1, h1 = sizefit._rate(w, h, rate=n/w)
-        if(color16 is None):
-            color16 = colors.image_colors(img, n, return_type="array")
-        img = img.resize((w1, h1), Image.Resampling.LANCZOS)
-
-        for x in range(w1):
-            for y in range(h1):
-                c = img.getpixel((x, y))
-                tmp = color16-c
-                tmp = np.sum(tmp**2, axis=-1)
-                idx = np.argmin(tmp)
-                img.putpixel((x, y), tuple([int(i) for i in color16[idx]]))
-        img = img.resize((w, h), Image.Resampling.NEAREST)
-
-        return img
-    ret = img_filter(imgtype, img, f)
-    message.response_sync(ret)
-
+        w, h = normalize_resolution(img.width, img.height, area)
+        ret = color_palette(img.resize((w, h), Image.Resampling.NEAREST)).resize((img.width, img.height), Image.Resampling.NEAREST)
+    simple_send([ret, "\n像素: %d, 颜色数：%d"%(area, ncolor)])
 
 @receiver
 @threading_run
@@ -637,7 +702,7 @@ def cmd_face_set_base(message: CQMessage, *args, **kwargs):
 @receiver
 @threading_run
 @on_exception_response
-@command("/马赛克叠图", opts={})
+@command("/马赛克叠图", opts={"-a"})
 def cmd_face_mosaic_compose(message: CQMessage, *args, **kwargs):
     img0 = base_images[message.sender.id]
     if(message.get_reply_image()):
@@ -646,39 +711,35 @@ def cmd_face_mosaic_compose(message: CQMessage, *args, **kwargs):
         imgtype, img1 = message.get_sent_images()[0]
     arr0 = np.array(img0.convert("RGB"))
     arr1 = np.array(img1.resize(img0.size).convert("RGB"))
-    def fit_range(arr: np.ndarray, lo=0, hi=1):
-        ret = (arr-arr.min())/(arr.max()-arr.min()+1e-10)
-        return ret*(hi-lo)+lo
-    def fit_mean(arr: np.ndarray, mean=0, mn=0, mx=255):
-        ret = arr-arr.mean()
-        # mn < ret + mean < mx
-        # mn-mean < ret < mx - mean
-        scale = np.maximum(1, np.maximum(ret+mean-mn, mx-mean-ret))
-        ret = ret/scale+mean
-        return ret
+    ret = arr0.copy().astype(np.float32)
+    h, w, _ = arr0.shape
+    tile_N = 32
+    foox = lambda tX: w/tile_N*tX
+    fooy = lambda tY: h/tile_N*tY
+    
+    a = float(kwargs.get("a", 0.8))
 
-    def f(arr0: np.ndarray, arr1):
-        h, w, ch=arr0.shape
-        ratio = (1000/w/h)**0.5
-        tile_h, tile_w = int(h*ratio), int(w*ratio)
-        tile_size = min(h//tile_h, w//tile_w)
-        ret = np.zeros((tile_h*tile_size, tile_w*tile_size, ch), np.float32)
-        for x in range(tile_w):
+    for tile_Y in range(tile_N):
+        for tile_X in range(tile_N):
+            up, lo = int(fooy(tile_Y)), int(fooy(tile_Y+1))
+            le, ri = int(foox(tile_X)), int(foox(tile_X+1))
+            tile0 = arr0[up:lo, le:ri, :]
+            tile1 = arr1[up:lo, le:ri, :]
+            col = tile0.mean(axis=0, keepdims=True).mean(axis=1, keepdims=True)
+            t = col*a+tile1*(1-a)
+            # mn = t.min(axis=0, keepdims=True).min(axis=1, keepdims=True)
+            # mx = t.max(axis=0, keepdims=True).max(axis=1, keepdims=True)
+            # mask = (np.zeros_like(t)+mn) == (np.zeros_like(t)+mx) # cast
+            # t = (t-mn)/(mx-mn)*255
+            # t[mask] = tile0[mask]
+            ret[up:lo, le:ri, :] = t
+    ret = (ret-ret.min())/(ret.max()-ret.min())*255
+    simple_send(Image.fromarray(ret.astype(np.uint8)))
+
+
             
-            for y in range(tile_h):
-                left = x*tile_size
-                top = y*tile_size
-                tile0 = arr0[top:top+tile_size, left:left+tile_size, :]
-                tile1 = arr1[top:top+tile_size, left:left+tile_size, :]
-                color = tile0.mean(axis=0, keepdims=True).mean(axis=1, keepdims=True)
-                rge = np.minimum(color, 255-color)
-                texture = fit_mean(tile1, 0, -rge, rge)
-                tile = color+texture
-                ret[top:top+tile_size, left:left+tile_size, :] = tile
-        return ret
-    arr = f(arr0, arr1)
-    im = Image.fromarray(arr.astype(np.uint8))
-    simple_send(im)
+
+
     
 
 
@@ -723,3 +784,63 @@ def cmd_yuyan(message: CQMessage, *args, **kwargs):
     # simple_send("%s %s"%(meow.dtype, meow.shape))
     im = Image.fromarray(meow)
     simple_send(im)
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/黑白", opts={"-gamma"})
+def cmd_adotpic(message: CQMessage, *args, **kwargs):
+    if(message.get_reply_image()):
+        img = message.get_reply_image()
+    else:
+        _, img = message.get_sent_images()[0]
+    
+    arr = np.array(img.convert("L"))
+    mean = np.mean(arr)
+    arr = arr-mean
+    g = float(kwargs.get("gamma", 1))
+    arr = arr*(np.abs(arr)**(g-1))
+    mn, mx = np.min(arr), np.max(arr)
+    arr = (arr-mn)/(mx-mn)*255
+    simple_send(Image.fromarray(arr.astype(np.uint8)))
+
+@receiver
+@threading_run
+@on_exception_response
+@command("/RGB", opts={"-strength"})
+def cmd_rgb_move(message: CQMessage, *args, **kwargs):
+    if(message.get_reply_image()):
+        imgtype = ""
+        img = message.get_reply_image()
+    else:
+        imgtype, img = message.get_sent_images()[0]
+    strength = float(kwargs.get("strength", 1)) * 0.02
+    _2pi = math.pi*2
+    def do(img, rot=0):
+        def do_channel(charr, chr):
+            w, h = charr.shape
+            rad = math.sqrt(w*w+h*h)*strength
+            dx, dy = math.cos(chr*_2pi)*rad, math.sin(chr*_2pi)*rad
+            dx, dy = round(dx), round(dy)
+            charr1_moved = charr[max(dx, 0):min(w+dx, w), max(dy, 0):min(dy+h, h)]
+            ret = Image.fromarray(charr1_moved).resize((h, w))
+            return ret
+        arr = np.array(img.convert("RGB"))
+        r = np.array(do_channel(arr[:, :, 0], rot))
+        g = np.array(do_channel(arr[:, :, 1], rot+1/3))
+        b = np.array(do_channel(arr[:, :, 2], rot+2/3))
+        arr = np.stack([r, g, b], axis=2)
+        return Image.fromarray(arr)
+    if (imgtype=="image/gif"):
+        orig_frames, fps = image.gif_frames_fps(img)
+        frames = []
+        for idx, i in enumerate(orig_frames):
+            frames.append(do(i, idx/len(orig_frames)))
+    else:
+        fps = 18
+        frames = []
+        for i in range(22):
+            frames.append(do(img, i/22))
+    gif = make_gif_size(frames, fps=fps)
+    simple_send(gif)
+

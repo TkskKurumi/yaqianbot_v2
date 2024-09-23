@@ -38,18 +38,24 @@ def get_file(*args, savepath=None, **kwargs):
     return savepath
 
 
-def get_image(*args, **kwargs):
-    r = sess.get(*args, **kwargs)
-    content = r.content
-    bio = BytesIO()
-    bio.write(content)
-    bio.seek(0)
-    try:
-        im = Image.open(bio)
-    except Exception as e:
-        print("Cannot get image", args, kwargs)
-        raise e
-    return [r.headers.get('Content-Type'), im]
+def get_image(*args, retry=3, **kwargs):
+    for i in range(retry):
+        try:
+            if (i!=0):
+                kwargs["expire_after"] = 0
+            r = sess.request("GET", *args, **kwargs)
+            
+            content = r.content
+            bio = BytesIO()
+            bio.write(content)
+            bio.seek(0)
+            
+            im = Image.open(bio)
+        except Exception as e:
+            print("Cannot get image", args, kwargs)
+            if (i==retry-1):
+                raise e
+        return [r.headers.get('Content-Type'), im]
 
 
 def get_avatar(uid):

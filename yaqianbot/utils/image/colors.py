@@ -116,6 +116,9 @@ class Color:
         return int(self.R), int(self.G), int(self.B), int(self.A)
 
     def get_hsl(self):
+        # import colorsys
+        # h, l, s = colorsys.rgb_to_hls(self.R/255, self.G/255, self.B/255)
+        # return (h*360, s, l)
         """
             Returns tuple of H, S, L
         """
@@ -184,7 +187,7 @@ class Color:
     @classmethod
     def from_hsl(cls, H, S, L, A=255):
         H = H%360
-        r, g, b = ImageColor.getrgb("hsl(%d,%d%%,%d%%)" % (H, S*100, L*100))
+        r, g, b = ImageColor.getrgb("hsl(%d,%.4f%%,%.4f%%)" % (H, S*100, L*100))
         return cls(r, g, b, A)
 
     @classmethod
@@ -255,7 +258,7 @@ class Color:
 BLACK = Color(0, 0, 0)
 WHITE = Color(255, 255, 255)
 # Color = Color
-if(__name__ == "__main__"):
+if(False and __name__ == "__main__"):
     # test
     from .print import print_colors
     from ..pyxyv import illust
@@ -265,3 +268,6 @@ if(__name__ == "__main__"):
     print(image_colors(im, 1))
     print_colors(image_colors(im, 1)[0].replace(S=0.2, L=0.8))
     print_colors(image_border_color(im))
+
+if (__name__=="__main__"):
+    print(Color.from_hsl(128, 0.1, 0.9).get_hsl())
